@@ -7,7 +7,8 @@
     transfer: 3,    // 柏での乗り換え
     mkKashiwa: 3,   // 南柏 ⇄ 柏 の乗車時間
   };
-  const CHOICES = { walkUniv: [15, 20, 25], bikeHome: [20, 25, 30] };
+  const CHOICES = { walkUniv: [15, 20, 25], bikeHome: [20, 25, 30], busHome: [30, 40, 50] };
+  CFG.busHome = 40; // 雨の日：荒川沖駅 ⇄ 家（バス。待ち時間こみ）
 
   // 祝日（土休日ダイヤ）。年末年始 12/30〜1/3 も土休日ダイヤ扱い。
   const HOLIDAYS = new Set([
@@ -28,6 +29,10 @@
   })();
   for (const k of Object.keys(CHOICES)) if (CHOICES[k].includes(S[k])) CFG[k] = S[k];
   const saveS = () => G.save(SKEY, S);
+  // 雨モード：S.rain = 'auto'（天気で決める）| 'on' | 'off'。雨なら荒川沖⇄家をバスで計算
+  const rainy = () => (S.rain === 'on' ? true : S.rain === 'off' ? false : !!(G.weather && G.weather.rainToday()));
+  const HM = () => (rainy() ? CFG.busHome : CFG.bikeHome);
+  const HV = () => (rainy() ? 'バス' : '自転車');
 
   const { pad, fmtMin: fmt, ymd } = G;
 
@@ -52,6 +57,15 @@
     const app = `conditions?${ft}&d=${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}&t=${pad(hh)}${pad(mn)}&type=1&prop=y`;
     const web = `https://transit.yahoo.co.jp/search/result?${ft}&y=${d.getFullYear()}&m=${pad(d.getMonth() + 1)}&d=${pad(d.getDate())}` +
       `&hh=${pad(hh)}&m1=${Math.floor(mn / 10)}&m2=${mn % 10}&type=1`;
+    return isAndroid ? appIntent(app, web) : web;
+  }
+  // 好きな駅どうしを Yahoo!乗換案内で調べる（type 1=出発時刻、4=到着時刻）
+  function yahooUrl(from, to, date, hhmm, type) {
+    const [hh, mn] = hhmm.split(':').map(Number), d = date;
+    const ft = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+    const app = `conditions?${ft}&d=${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}&t=${pad(hh)}${pad(mn)}&type=${type}`;
+    const web = `https://transit.yahoo.co.jp/search/result?${ft}&y=${d.getFullYear()}&m=${pad(d.getMonth() + 1)}&d=${pad(d.getDate())}` +
+      `&hh=${pad(hh)}&m1=${Math.floor(mn / 10)}&m2=${mn % 10}&type=${type}`;
     return isAndroid ? appIntent(app, web) : web;
   }
   const INFO_WEB = 'https://transit.yahoo.co.jp/diainfo/area/4';
@@ -92,23 +106,23 @@
     const out = [];
     if (from === 'train') { // 柏→荒川沖の電車に乗っている
       for (const [kDep, type, dest, araArr] of tt.chuDown) out.push({
-        leave: kDep, arrive: araArr + CFG.bikeHome, onboard: [kDep, araArr],
+        leave: kDep, arrive: araArr + HM(), onboard: [kDep, araArr],
         search: { from: '柏', to: '荒川沖', dep: kDep },
-        legs: [['柏', fmt(kDep) + ' 発', `${type} ${dest}行（乗車中）`], ['荒川沖', fmt(araArr) + ' 着', '自転車 ' + CFG.bikeHome + '分']],
-        steps: [{ arr: 'ara', t: kDep, do: `${type} ${dest}行に乗っている` }, { arr: 'home', t: araArr, do: `荒川沖 ${fmt(araArr)} 着 → 自転車で家へ（${CFG.bikeHome}分）` }],
+        legs: [['柏', fmt(kDep) + ' 発', `${type} ${dest}行（乗車中）`], ['荒川沖', fmt(araArr) + ' 着', HV() + ' ' + HM() + '分']],
+        steps: [{ arr: 'ara', t: kDep, do: `${type} ${dest}行に乗っている` }, { arr: 'home', t: araArr, do: `荒川沖 ${fmt(araArr)} 着 → ${HV()}で家へ（${HM()}分）` }],
       });
       return out;
     }
     for (const [kDep, type, dest, araArr] of tt.chuDown) {
       const tail = [
         { arr: 'ara', t: kDep, do: `柏 ${fmt(kDep)} 発 ${type} ${dest}行に乗る` },
-        { arr: 'home', t: araArr, do: `荒川沖 ${fmt(araArr)} 着 → 自転車で家へ（${CFG.bikeHome}分）` },
+        { arr: 'home', t: araArr, do: `荒川沖 ${fmt(araArr)} 着 → ${HV()}で家へ（${HM()}分）` },
       ];
       if (from === 'kashiwa') {
         out.push({
-          leave: kDep - CFG.margin, arrive: araArr + CFG.bikeHome,
+          leave: kDep - CFG.margin, arrive: araArr + HM(),
           search: { from: '柏', to: '荒川沖', dep: kDep },
-          legs: [['柏', fmt(kDep) + ' 発', `${type} ${dest}行`], ['荒川沖', fmt(araArr) + ' 着', '自転車 ' + CFG.bikeHome + '分']],
+          legs: [['柏', fmt(kDep) + ' 発', `${type} ${dest}行`], ['荒川沖', fmt(araArr) + ' 着', HV() + ' ' + HM() + '分']],
           steps: [{ arr: 'kashiwa', t: kDep - CFG.margin, do: '柏駅のホームへ' }, ...tail],
         });
         continue;
@@ -119,12 +133,12 @@
       const walk = from === 'univ' ? CFG.walkUniv : 0;
       out.push({
         leave: mk - walk - CFG.margin,
-        arrive: araArr + CFG.bikeHome,
+        arrive: araArr + HM(),
         search: { from: '南柏', to: '荒川沖', dep: mk },
         legs: [
           ['南柏', fmt(mk) + ' 発', '各駅停車'],
           ['柏', `${fmt(mk + CFG.mkKashiwa)} 着 → ${fmt(kDep)} 発`, `${type} ${dest}行`],
-          ['荒川沖', fmt(araArr) + ' 着', '自転車 ' + CFG.bikeHome + '分'],
+          ['荒川沖', fmt(araArr) + ' 着', HV() + ' ' + HM() + '分'],
         ],
         // 移動中の表示用（t はその時刻、do はその時にやること）
         steps: [
@@ -172,7 +186,7 @@
     for (const [araDep, type, dest, kArr] of tt.chuUp) {
       const mk = tt.mkUp.find((u) => u - CFG.mkKashiwa >= kArr + CFG.transfer);
       if (mk === undefined) continue;
-      const bike = from === 'home' ? CFG.bikeHome : 0;
+      const bike = from === 'home' ? HM() : 0;
       out.push({
         leave: araDep - bike - CFG.margin,
         arrive: mk + CFG.walkUniv,
@@ -183,7 +197,7 @@
           ['南柏', fmt(mk) + ' 着', '徒歩 ' + CFG.walkUniv + '分'],
         ],
         steps: [
-          bike ? { arr: 'ara', t: araDep - CFG.margin - bike, do: `荒川沖駅まで自転車（${bike}分）` } : { arr: 'ara', t: araDep - CFG.margin, do: '荒川沖駅のホームへ' },
+          bike ? { arr: 'ara', t: araDep - CFG.margin - bike, do: `荒川沖駅まで${HV()}（${bike}分）` } : { arr: 'ara', t: araDep - CFG.margin, do: '荒川沖駅のホームへ' },
           { arr: 'kashiwa', t: araDep, do: `荒川沖 ${fmt(araDep)} 発 ${type} ${dest}行に乗る` },
           { arr: 'kashiwa', t: kArr, do: `柏 ${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗り換え` },
           { arr: 'mk', t: mk - CFG.mkKashiwa, do: `柏 ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗る` },
@@ -196,8 +210,8 @@
   // 電車に乗らない区間（南柏→大学は徒歩、荒川沖→家は自転車）
   const moveOnly = (dir, from) => (dir === 'school' && from === 'mk') || (dir === 'home' && from === 'ara');
   function moveOption(dir, start) {
-    const m = dir === 'school' ? CFG.walkUniv : CFG.bikeHome;
-    const what = dir === 'school' ? `大学まで歩く（${m}分）` : `家まで自転車（${m}分）`;
+    const m = dir === 'school' ? CFG.walkUniv : HM();
+    const what = dir === 'school' ? `大学まで歩く（${m}分）` : `家まで${HV()}（${m}分）`;
     return { leave: start, arrive: start + m, search: null, move: true,
       legs: [[dir === 'school' ? '南柏' : '荒川沖', fmt(start) + ' 出発', what]], steps: [{ arr: dir === 'school' ? 'univ' : 'home', t: start, do: what }] };
   }
@@ -255,7 +269,7 @@
     const prev = new Date(D); prev.setDate(prev.getDate() - 1);
     const sp = isSpecialT(dir, T, from);
     let all, ok;
-    if (moveOnly(dir, from)) { all = [moveOption(dir, T - (dir === 'school' ? CFG.walkUniv : CFG.bikeHome))]; ok = all; }
+    if (moveOnly(dir, from)) { all = [moveOption(dir, T - (dir === 'school' ? CFG.walkUniv : HM()))]; ok = all; }
     else {
       all = build(dir, TIMETABLE[typeOf(prev)], from).map((o) => shift(o, -1440)).concat(build(dir, TIMETABLE[typeOf(D)], from))
         .sort((a, b) => a.leave - b.leave);
@@ -506,8 +520,10 @@
     h += `<a class="btn" style="display:block;margin-bottom:10px;text-align:left" href="${infoLink}">運行情報（Yahoo!乗換案内）›</a>`;
     h += mainHtml;
     if (listItems) h += `<div class="gh">${listTitle}</div><ul class="lc-list">${listItems}</ul>`;
-    h += `<div class="gh">移動時間の設定</div><div class="card">${Object.keys(CHOICES).map((k) => `<div class="set-row"><span>${k === 'walkUniv' ? '大学 ⇄ 南柏（徒歩）' : '荒川沖 ⇄ 家（自転車）'}</span>
+    h += `<div class="gh">移動時間の設定</div><div class="card">${Object.keys(CHOICES).map((k) => `<div class="set-row"><span>${{ walkUniv: '大学 ⇄ 南柏（徒歩）', bikeHome: '荒川沖 ⇄ 家（自転車）', busHome: '荒川沖 ⇄ 家（雨の日・バス、待ち時間こみ）' }[k]}</span>
       <div class="seg" style="margin:0">${CHOICES[k].map((x) => `<button class="${x === CFG[k] ? 'on' : ''}" data-k="${k}" data-v="${x}">${x}分</button>`).join('')}</div></div>`).join('')}
+      <div class="set-row"><span>雨モード（雨の日は荒川沖 ⇄ 家をバスで計算）${G.weather && G.weather.rainToday() ? '・☔ 今日は雨の予報' : ''}</span>
+      <div class="seg" style="margin:0">${[['auto', '天気で自動'], ['on', '☔ 雨'], ['off', '☀️ 晴れ']].map(([k, t]) => `<button data-rain="${k}" class="${(S.rain || 'auto') === k ? 'on' : ''}">${t}</button>`).join('')}</div></div>
       <div class="set-row" style="margin:0"><span>2限の特例（2限に行くときは ${SPECIAL.from} ${fmt(SPECIAL.dep)} 発までの電車に乗る）</span>
       <div class="seg" style="margin:0"><button data-sp="1" class="${specialOn() ? 'on' : ''}">オン</button><button data-sp="0" class="${specialOn() ? '' : 'on'}">オフ</button></div></div></div>`;
     h += `<div class="foot"><button class="daytype" id="lcDay">${(S.dayMode === 'auto' ? '' : '手動：') + { wk: '平日', ho: '土休日' }[plan.type]}ダイヤ</button><br>
@@ -523,6 +539,7 @@
     if (b.dataset.dir) { S.dir = b.dataset.dir; delete S.arriveDay; }
     else if (b.dataset.mode) { S.mode = b.dataset.mode; delete S.arriveDay; }
     else if (b.dataset.p) { S.arrive[S.dir] = b.dataset.p; delete S.arriveDay; }
+    else if (b.dataset.rain) { S.rain = b.dataset.rain; }
     else if (b.dataset.sp) { S.special2 = b.dataset.sp === '1'; }
     else if (b.dataset.k) { CFG[b.dataset.k] = S[b.dataset.k] = Number(b.dataset.v); }
     else if (b.id === 'lcDay') { S.dayMode = { auto: 'wk', wk: 'ho', ho: 'auto' }[S.dayMode]; }
@@ -595,7 +612,7 @@
     return { dir: tr.dir, dep, o, base: plan.base, nowAbs, done, boarded: tr.train != null ? tr.train : null };
   }
 
-  G.commute = { HOLIDAYS, dir: () => S.dir, onboardList, board, flipDir, autoLocate, autoOn, PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
+  G.commute = { rainMode: () => S.rain || 'auto', yahooUrl, rainy, HOLIDAYS, dir: () => S.dir, onboardList, board, flipDir, autoLocate, autoOn, PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
   // 秒まで数えるので、表示中は1秒ごとに描き直す（入力中は止める）
   G.reg('commute', { title: '通学', render, tick: 1, skipTick: () => document.activeElement && document.activeElement.id === 'lcArrive' });
 })();

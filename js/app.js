@@ -53,7 +53,7 @@
   G.$('mLogout').onclick = () => { sheet.classList.remove('show'); G.kadai.logout(); G.go('kadai'); };
 
   // バックアップ（時間割・通学設定・教室の追記・完了印）。合言葉は含めない
-  const BK = ['gl.classes', 'gl.classOpt', 'gl.commute', 'gl.roomsLocal', 'kadai-done', 'gl.theme', 'gl.placePos', 'gl.events'];
+  const BK = ['gl.classes', 'gl.classOpt', 'gl.commute', 'gl.roomsLocal', 'kadai-done', 'gl.theme', 'gl.placePos', 'gl.events', 'gl.ntfy'];
   G.$('mBackup').onclick = () => {
     const o = {}; BK.forEach((k) => { const v = G.raw(k); if (v != null) o[k] = v; });
     const txt = 'GODLIFE1:' + btoa(unescape(encodeURIComponent(JSON.stringify(o))));
@@ -86,6 +86,13 @@
   function paintGps() { G.$('mGps').textContent = `📍 開いたときに現在地を取得：${G.commute.autoOn() ? 'オン' : 'オフ'}`; }
   G.$('mGps').onclick = () => { G.save('gl.autoGps', !G.commute.autoOn()); paintGps(); if (G.commute.autoOn()) G.commute.autoLocate(rerender); };
   paintGps();
+  G.$('mNotify').onclick = () => { G.$('sheet').classList.remove('show'); G.notify.open(); };
+  // 天気と通知の予約（開いたとき・画面に戻ったとき）
+  const refreshExtra = () => {
+    // 雨モードが天気で変わるので、通知の予約は天気を読んでから
+    G.weather.load().then(() => { if (G.cur === 'home' || G.cur === 'commute') G.mods[G.cur].render(); })
+      .finally(() => G.notify.schedule().catch(() => {}));
+  };
   G.$('mVer').textContent = `GOD Life バージョン ${G.VERSION}`;
 
   // 起動
@@ -96,10 +103,12 @@
   clock();
   timer = setInterval(() => { tick(); clock(); }, 1000);
   G.commute.autoLocate(rerender);
+  refreshExtra();
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     show(true);
     G.commute.autoLocate(rerender);
+    refreshExtra();
     if (G.cur !== 'kadai') G.kadai.refresh();
   });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

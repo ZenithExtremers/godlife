@@ -65,11 +65,27 @@
     const rows = [];
     u.forEach((e) => rows.push(`<div class="ci"><span class="tag u">${G.esc(e.kind || '大学')}</span><div class="ct"><b>${G.esc(e.title)}</b>${e.end && e.end !== e.date ? `<small>${md(e.date)}〜${md(e.end)}</small>` : ''}</div></div>`));
     kd.forEach((i) => rows.push(`<div class="ci" onclick="G.go('kadai')"><span class="tag k">締切 ${G.esc(i.due.slice(11))}</span><div class="ct"><b>${G.esc(i.title)}</b><small>${G.esc(i.teacher || '')}${i.teacher ? '・' : ''}${G.esc(i.remain)}</small></div></div>`));
-    my.forEach((e) => rows.push(`<div class="ci" data-edit="${e.id}"><span class="tag m">${e.allDay ? '終日' : `${G.esc(e.start || '')}${e.end ? '–' + G.esc(e.end) : ''}`}</span><div class="ct"><b>${G.esc(e.title)}</b><small>${e.repeat === 'weekly' ? '🔁 毎週' + wd(e.date) + '曜' : ''}${e.repeat === 'weekly' && e.memo ? '・' : ''}${G.esc(e.memo || '')}</small></div></div>`));
+    my.forEach((e) => rows.push(`<div class="ci" data-edit="${e.id}"><span class="tag m">${e.allDay ? '終日' : `${G.esc(e.start || '')}${e.end ? '–' + G.esc(e.end) : ''}`}</span><div class="ct"><b>${G.esc(e.title)}</b><small>${e.place ? '📍' + G.esc(e.place) + '駅　' : ''}${e.repeat === 'weekly' ? '🔁 毎週' + wd(e.date) + '曜' : ''}${e.repeat === 'weekly' && e.memo ? '・' : ''}${G.esc(e.memo || '')}</small>${routeLinks(e, day)}</div></div>`));
     h += rows.length ? rows.join('') : '<div class="muted">予定はありません</div>';
     h += '</div>';
     if (G.kadai.summary().locked) h += '<p class="muted">課題の締切は、「課題」タブで合言葉を入れると表示されます。</p>';
     return h;
+  }
+
+  /* ---------- 行き先の駅（Yahoo!乗換案内） ---------- */
+  // 出発駅：その日に対面授業があって、予定が最後の授業より後なら大学（南柏）から、ほかは家（荒川沖）から
+  function fromStation(e, day) {
+    const list = G.classes.dayList(parse(day)).filter((x) => !G.classes.isOnline(x.c));
+    const last = list[list.length - 1];
+    if (last && e.start) { const [h, m] = e.start.split(':').map(Number); if (h * 60 + m >= last.e) return '南柏'; }
+    return '荒川沖';
+  }
+  function routeLinks(e, day) {
+    if (!e.place || e.allDay || !e.start) return '';
+    const from = fromStation(e, day), d = parse(day);
+    const go = G.commute.yahooUrl(from, e.place, d, e.start, 4);
+    const back = e.end ? G.commute.yahooUrl(e.place, '荒川沖', d, e.end, 1) : null;
+    return `<span class="rl"><a class="btn" href="${go}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🚃 ${from}→${G.esc(e.place)} ${G.esc(e.start)}着で調べる</a>${back ? `<a class="btn" href="${back}" target="_blank" rel="noopener" onclick="event.stopPropagation()">帰り ${G.esc(e.end)}発</a>` : ''}</span>`;
   }
 
   /* ---------- 予定の編集 ---------- */
@@ -82,6 +98,7 @@
       <label class="f">日付</label><input id="evD" type="date" value="${e.date}">
       <label class="ocr-mode" style="color:var(--text);font-size:15px"><input type="checkbox" id="evA"${e.allDay ? ' checked' : ''}> 終日</label>
       <div class="row2" id="evTimes"${e.allDay ? ' hidden' : ''}><div><label class="f">開始</label><input id="evS" type="time" value="${e.start || ''}"></div><div><label class="f">終了</label><input id="evE" type="time" value="${e.end || ''}"></div></div>
+      <label class="f">行き先の駅（入れると Yahoo!乗換案内で経路を調べられます）</label><input id="evP" value="${G.esc(e.place || '')}" placeholder="例：土浦（「駅」はなくてOK）">
       <label class="f">くり返し</label><select id="evR"><option value="">しない</option><option value="weekly"${e.repeat === 'weekly' ? ' selected' : ''}>毎週</option></select>
       <label class="f">メモ</label><input id="evM" value="${G.esc(e.memo || '')}">
       <button class="btn pri full" id="evSave">保存</button>
@@ -91,7 +108,7 @@
       q('#evA').onchange = () => { q('#evTimes').hidden = q('#evA').checked; };
       q('#evSave').onclick = () => {
         const t = q('#evT').value.trim(); if (!t) { q('#evT').focus(); return; }
-        const n = { ...e, title: t, date: q('#evD').value || day, allDay: q('#evA').checked, start: q('#evS').value, end: q('#evE').value, memo: q('#evM').value.trim(), repeat: q('#evR').value };
+        const n = { ...e, title: t, date: q('#evD').value || day, allDay: q('#evA').checked, start: q('#evS').value, end: q('#evE').value, memo: q('#evM').value.trim(), repeat: q('#evR').value, place: q('#evP').value.trim().replace(/駅$/, '') };
         saveMine([...mine().filter((x) => x.id !== e.id), n]);
         st.sel = n.date; G.closeEditor(); render();
       };
@@ -158,6 +175,6 @@
   st.uni = G.load('gl.eventsCache', null);
   loadUni().then(() => { if (G.cur === 'class') render(); });
 
-  G.calendar = { view: (x) => { st.view = x; if (G.cur === 'class') render(); }, mineOn, uniOn };
+  G.calendar = { routeLinks, fromStation, view: (x) => { st.view = x; if (G.cur === 'class') render(); }, mineOn, uniOn };
   G.reg('class', { title: 'カレンダー', render, tick: 60, skipTick: () => st.view === 'tt', onShow: () => { loadUni().then(() => G.cur === 'class' && render()); if (!G.kadai.summary().locked) G.kadai.refresh(); } });
 })();

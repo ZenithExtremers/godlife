@@ -173,12 +173,20 @@
     // 家にいそうな時間（1コマ目の前・授業のない日の午前）は「行き」を上に
     const atHome = cs.first ? min < cs.first.s : min < 12 * 60;
     let rows = atHome ? [classRow(now), goNowRow(now, cs), homeRow(now, cs)] : [homeRow(now, cs), classRow(now), goNowRow(now, cs)];
+    // 今日の予定に行き先の駅があれば、Yahoo!乗換案内で調べる行を足す
+    const today = G.ymd(now);
+    const evs = G.calendar.mineOn(today).filter((e) => e.place && e.start && !e.allDay && e.start > `${G.pad(now.getHours())}:${G.pad(now.getMinutes())}`);
+    rows = rows.concat(evs.map((e) => `<div class="crow" style="cursor:default"><div class="tx"><div class="t1">今日の予定</div><div class="t2">${G.esc(e.start)} ${G.esc(e.title)}（📍${G.esc(e.place)}）</div>
+      <div class="t3">${G.calendar.routeLinks(e, today)}</div></div></div>`));
     const isTrain = G.commute.getLoc() === 'train';
     if (isTrain) rows = onboardRows(now);
     // 移動中は、その向きの行は出さない（移動中カードに出ている）
     const tr = G.commute.trip(now);
     if (tr) rows = isTrain ? [] : tr.dir === 'school' ? [homeRow(now, cs)] : [classRow(now), goNowRow(now, cs)];
-    const btns = isTrain ? '' : `<div class="row2 tripbtns"><button class="btn${atHome ? ' pri' : ''}" onclick="G.home.leave('school')">🚪 家を出た</button><button class="btn${atHome ? '' : ' pri'}" onclick="G.home.leave('home')">🏫 大学を出た</button></div>`;
+    // 家では「家を出た」だけ、大学では「大学を出た」だけ。駅・車内では出さない（自動のときは時間割から推定）
+    const at = G.commute.getLoc() || (atHome ? 'home' : 'univ');
+    const btns = at === 'home' ? `<div class="tripbtns"><button class="btn pri full" onclick="G.home.leave('school')">🚪 家を出た</button></div>`
+      : at === 'univ' ? `<div class="tripbtns"><button class="btn pri full" onclick="G.home.leave('home')">🏫 大学を出た</button></div>` : '';
     const loc = G.commute.getLoc();
     return `<div class="gh">🚃 通学${loc ? `<span class="locchip">📍${G.commute.PLACES[loc].name}</span>` : ''}<a href="#commute">時刻表 ›</a></div><div class="card crows">${G.commute.locChips(true)}${rows.filter(Boolean).join('')}${btns}</div>`;
   }
@@ -212,7 +220,7 @@
   function render() {
     const now = new Date();
     const cs = G.classes.status(now);
-    G.$('v-home').innerHTML = tripCard(now, cs) + hero(now, cs) + commuteTile(now, cs) + kadaiTile() + menuTile(now) + todayList(now, cs);
+    G.$('v-home').innerHTML = tripCard(now, cs) + hero(now, cs) + commuteTile(now, cs) + G.weather.card() + kadaiTile() + menuTile(now) + todayList(now, cs);
   }
 
   // 手順をタップ：最後（着く）なら到着で終わり、それ以外はそこまで終わったことにする
