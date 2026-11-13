@@ -315,9 +315,12 @@
   }
   const km = (d) => (d < 1000 ? `${Math.round(d / 10) * 10}m` : `${(d / 1000).toFixed(1)}km`);
   // 位置はボタンを押したときに1回だけ取り、一番近い地点を選ぶ。位置そのものは保存しない（登録したときを除く）
-  function locate(register, done) {
-    if (!navigator.geolocation) { G.toast('この端末では位置情報が使えません'); return; }
-    G.toast('現在地を調べています…');
+  // silent：アプリを開いたときの自動取得。場所が変わったときだけ知らせる
+  function locate(register, done, silent) {
+    if (!navigator.geolocation) { if (!silent) G.toast('この端末では位置情報が使えません'); return; }
+    if (!silent) G.toast('現在地を調べています…');
+    const before = getLoc();
+    const say = (force) => { if (!silent || (force && getLoc() !== before)) G.toast(S.gpsMsg); };
     navigator.geolocation.getCurrentPosition((pos) => {
       const me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
       const acc = Math.round(pos.coords.accuracy || 0);
@@ -337,20 +340,28 @@
       if (!(best && best.d <= best.r + Math.min(acc, 1000)) && onLine <= 2500) {
         pickLoc('train');
         S.gpsMsg = `📍 荒川沖〜柏の線路沿い（約${km(onLine)}）なので「車内」を選びました（精度±${km(acc)}）`;
-        saveS(); G.toast(S.gpsMsg); done && done(); return;
+        saveS(); say(true); done && done(); return;
       }
       // GPSの誤差（屋内だと数百m〜1km）も見込んで判定し、3km以内なら一番近い地点を選ぶ
       if (best && (best.d <= best.r + Math.min(acc, 1000) || best.d <= 3000)) {
         pickLoc(best.k);
         S.gpsMsg = `📍 ${best.name}を選びました（約${km(best.d)}・精度±${km(acc)}）`;
-      } else {
-        S.gpsMsg = `近くに登録した地点がありません（一番近いのは${best ? best.name + '・約' + km(best.d) : 'なし'}、精度±${km(acc)}）。手で選んでください`;
+        saveS(); say(true); done && done(); return;
       }
-      saveS(); G.toast(S.gpsMsg); done && done();
+      S.gpsMsg = `近くに登録した地点がありません（一番近いのは${best ? best.name + '・約' + km(best.d) : 'なし'}、精度±${km(acc)}）。手で選んでください`;
+      saveS(); say(false); done && done();
     }, (err) => {
       S.gpsMsg = err.code === 1 ? '位置情報が許可されていません（ブラウザやスマホの設定から、このサイトの位置情報を許可してください）' : '現在地を取得できませんでした（電波の良い場所でもう一度）';
-      saveS(); G.toast(S.gpsMsg); done && done();
-    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+      saveS(); say(false); done && done();
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: silent ? 120000 : 0 });
+  }
+  // アプリを開いたとき・画面に戻ったときに自動で1回（5分に1回まで）。メニューでオフにできる
+  const autoOn = () => G.load('gl.autoGps', true) !== false;
+  let lastAuto = 0;
+  function autoLocate(done) {
+    if (!autoOn() || Date.now() - lastAuto < 5 * 60e3) return;
+    lastAuto = Date.now();
+    locate(null, done, true);
   }
   // 現在地のボタン一式（通学タブとホームで共通）
   function locChips(compact) {
@@ -540,7 +551,7 @@
     return { dir: tr.dir, dep, o, base: plan.base, nowAbs, done };
   }
 
-  G.commute = { PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
+  G.commute = { autoLocate, autoOn, PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
   // 秒まで数えるので、表示中は1秒ごとに描き直す（入力中は止める）
   G.reg('commute', { title: '通学', render, tick: 1, skipTick: () => document.activeElement && document.activeElement.id === 'lcArrive' });
 })();

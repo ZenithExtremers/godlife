@@ -81,6 +81,12 @@
     });
   };
 
+  // 開いたときに現在地を自動で取る（メニューでオン／オフ）
+  const rerender = () => { const m = G.mods[G.cur]; if (m && (G.cur === 'home' || G.cur === 'commute')) m.render(); };
+  function paintGps() { G.$('mGps').textContent = `📍 開いたときに現在地を取得：${G.commute.autoOn() ? 'オン' : 'オフ'}`; }
+  G.$('mGps').onclick = () => { G.save('gl.autoGps', !G.commute.autoOn()); paintGps(); if (G.commute.autoOn()) G.commute.autoLocate(rerender); };
+  paintGps();
+
   // 起動
   G.kadai.init();
   G.commute.init();
@@ -88,9 +94,11 @@
   show();
   clock();
   timer = setInterval(() => { tick(); clock(); }, 1000);
+  G.commute.autoLocate(rerender);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     show(true);
+    G.commute.autoLocate(rerender);
     if (G.cur !== 'kadai') G.kadai.refresh();
   });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
