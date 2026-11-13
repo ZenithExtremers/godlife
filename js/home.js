@@ -228,7 +228,48 @@
     if (i === last || G.commute.tripMark(i) === 'end') { G.commute.tripEnd(); render(); G.toast('おつかれさまでした！'); return; }
     render();
   }
-  G.home = { leave, mark };
+  // シンプル表示（開いた瞬間に大きく）：いま一番大事な「あと何分で出るか」だけ
+  function glance(now = new Date()) {
+    const cs = G.classes.status(now);
+    const min = G.minOfDay(now);
+    const loc = G.commute.getLoc();
+    const atHome = cs.first ? min < cs.first.s : min < 12 * 60;
+    const at = loc || (atHome ? 'home' : 'univ');
+    const tr = G.commute.trip(now);
+    const left = (m) => Math.max(0, m);
+    if (tr) {
+      const o = tr.o, n = tr.nowAbs;
+      const A = [...o.steps, { t: o.arrive, do: (tr.dir === 'school' ? '大学' : '家') + 'に着く' }];
+      const nx = A.find((x, i) => i > Math.max(0, tr.done) && x.t > n) || A[A.length - 1];
+      return { label: '🚃 移動中', big: `あと${G.dur(left(nx.t - n))}`, main: nx.do, sub: `${tr.dir === 'school' ? '大学' : '家'}に ${G.fmtMin(o.arrive)} 着` };
+    }
+    if (at === 'train') {
+      const p = G.commute.nowPlan(G.commute.dir(), now, 'train'), o = p.opts[0];
+      if (o) return { label: '🚃 車内', big: `${G.fmtMin(o.arrive)} 着`, main: `${G.commute.dir() === 'school' ? '大学' : '家'}まであと${G.dur(left(o.arrive - p.nowAbs))}`, sub: `${o.legs[0][1]} ${o.legs[0][2]}` };
+    }
+    if (at === 'home') {
+      const nd = nextClassDay(now, 'home');
+      if (nd && nd.k === 0) {
+        const p = G.commute.arrivePlan('school', now, nd.first.s, 0, 'home'), o = p.opts[0];
+        if (o) return { label: '🚪 家を出るまで', big: o.leave - p.nowAbs < 0 ? '出発時刻を過ぎています' : `あと${G.dur(o.leave - p.nowAbs)}`, main: `${G.fmtMin(o.leave)} に家を出る`,
+          sub: `${pfx(nd.first)}（${nd.first.c.name}）に間に合う・大学 ${G.fmtMin(o.arrive)} 着${G.commute.rainy() ? '・☔ バス' : ''}` };
+      }
+      const p = G.commute.nowPlan('school', now, 'home'), o = p.opts[0];
+      if (o) return { label: '🚪 今から行くなら', big: `あと${G.dur(left(o.leave - p.nowAbs))}`, main: `${o.tomorrow ? '明日 ' : ''}${G.fmtMin(o.leave)} に家を出る`, sub: `大学 ${G.fmtMin(o.arrive)} 着${nd ? '・次の授業は ' + G.commute.dayLabel(nd.date, now) + pfx(nd.first) : ''}` };
+    }
+    const from = at === 'home' ? null : at;
+    const dir = at === 'univ' ? 'home' : G.commute.dir();
+    if (from && G.commute.fromFor(dir)) {
+      const after = at === 'univ' && cs.last && min < cs.last.e && cs.first && min >= cs.first.s ? cs.last.e : null;
+      const base = after ? new Date(new Date(now).setHours(0, after, 0, 0)) : now;
+      const p = G.commute.nowPlan(dir, base, from), o = p.opts[0];
+      const P = G.commute.PLACES[from];
+      if (o) return { label: after ? `🏫 授業後（${G.fmtMin(after)} 終了）` : `📍 ${P.name}から${dir === 'school' ? '大学' : '家'}へ`,
+        big: after ? `${G.fmtMin(o.leave)} 発` : `あと${G.dur(left(o.leave - G.minOfDay(now)))}`, main: `${o.tomorrow ? '明日 ' : ''}${G.fmtMin(o.leave)} に${P.short}を出る`, sub: `${dir === 'school' ? '大学' : '家'}に ${G.fmtMin(o.arrive)} 着${G.commute.rainy() && dir === 'home' ? '・☔ バス' : ''}` };
+    }
+    return { label: 'GOD Life', big: `${now.getHours()}:${G.pad(now.getMinutes())}`, main: cs.next ? `次：${pfx(cs.next)} ${cs.next.c.name}` : '今日の予定はありません', sub: '' };
+  }
+  G.home = { leave, mark, glance };
   // 現在地ボタン（通学欄）
   G.$('v-home').addEventListener('click', (e) => {
     if (G.commute.handleLoc(e, render)) return;

@@ -40,6 +40,7 @@
   <button data-tab="campus"><i>🍛</i>学食・教室</button>
 </nav>
 
+<div class="glance" id="glance" hidden><div class="gl-in"><div class="gl-label" id="glLabel"></div><div class="gl-big" id="glBig"></div><div class="gl-main" id="glMain"></div><div class="gl-sub" id="glSub"></div><div class="gl-wx" id="glWx"></div><div class="gl-tap">タップで閉じる</div></div></div>
 <div class="toast" id="toast"><span id="toastMsg"></span><button id="toastUndo">元に戻す</button></div>
 
 <div class="sheet" id="sheet"><div class="in">
@@ -47,6 +48,7 @@
   <a class="btn" href="https://rp.reitaku-u.ac.jp/uprx/" target="_blank" rel="noopener">麗澤ポータル（UNIPA）を開く ↗</a>
   <div class="seg" id="mTheme"><button data-theme-set="auto">🌗 自動</button><button data-theme-set="light">☀️ ライト</button><button data-theme-set="dark">🌙 ダーク</button></div>
   <button class="btn" id="mGps"></button>
+  <button class="btn" id="mGlance"></button>
   <button class="btn" id="mNotify">🔔 出発前の通知（ntfy）</button>
   <button class="btn" id="mInstall">ホーム画面に追加する方法</button>
   <p id="installHelp" hidden><b>iPhone</b>：Safariの共有ボタン →「ホーム画面に追加」<br><b>Android</b>：Chromeの︙メニュー →「ホーム画面に追加」または「アプリをインストール」</p>
@@ -61,6 +63,7 @@
 <div class="sheet" id="editor"><div class="in" id="editorIn"></div></div>
 
 <script src="data/trains.js"></script>
+<script src="data/bus.js"></script>
 <script src="js/core.js"></script>
 <script src="js/classes.js"></script>
 <script src="js/ocr.js"></script>

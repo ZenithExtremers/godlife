@@ -53,7 +53,7 @@
   G.$('mLogout').onclick = () => { sheet.classList.remove('show'); G.kadai.logout(); G.go('kadai'); };
 
   // バックアップ（時間割・通学設定・教室の追記・完了印）。合言葉は含めない
-  const BK = ['gl.classes', 'gl.classOpt', 'gl.commute', 'gl.roomsLocal', 'kadai-done', 'gl.theme', 'gl.placePos', 'gl.events', 'gl.ntfy'];
+  const BK = ['gl.classes', 'gl.classOpt', 'gl.commute', 'gl.roomsLocal', 'kadai-done', 'gl.theme', 'gl.placePos', 'gl.events', 'gl.ntfy', 'gl.glance'];
   G.$('mBackup').onclick = () => {
     const o = {}; BK.forEach((k) => { const v = G.raw(k); if (v != null) o[k] = v; });
     const txt = 'GODLIFE1:' + btoa(unescape(encodeURIComponent(JSON.stringify(o))));
@@ -93,6 +93,24 @@
     G.weather.load().then(() => { if (G.cur === 'home' || G.cur === 'commute') G.mods[G.cur].render(); })
       .finally(() => G.notify.schedule().catch(() => {}));
   };
+  // シンプル表示（開いた瞬間に「あと何分で出るか」を大きく）
+  const glanceOn = () => G.load('gl.glance', true) !== false;
+  let glTimer = null;
+  function paintGlance() {
+    const g = G.home.glance();
+    G.$('glLabel').textContent = g.label; G.$('glBig').textContent = g.big; G.$('glMain').textContent = g.main; G.$('glSub').textContent = g.sub;
+    const w = G.weather.probIn(0, G.ymd(new Date()), new Date().getHours(), 23);
+    G.$('glWx').textContent = w == null ? '' : `☂ 家の周り ${w}%（これから）${G.commute.rainy() ? '・雨モード' : ''}`;
+  }
+  function openGlance() {
+    if (!glanceOn()) return;
+    paintGlance(); G.$('glance').hidden = false;
+    clearInterval(glTimer); glTimer = setInterval(paintGlance, 15000);
+  }
+  G.$('glance').onclick = () => { G.$('glance').hidden = true; clearInterval(glTimer); };
+  const paintGl = () => { G.$('mGlance').textContent = `⚡ 開いたときにシンプル表示：${glanceOn() ? 'オン' : 'オフ'}`; };
+  G.$('mGlance').onclick = () => { G.save('gl.glance', !glanceOn()); paintGl(); };
+  paintGl();
   G.$('mVer').textContent = `GOD Life バージョン ${G.VERSION}`;
 
   // 起動
@@ -104,11 +122,13 @@
   timer = setInterval(() => { tick(); clock(); }, 1000);
   G.commute.autoLocate(rerender);
   refreshExtra();
+  openGlance();
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     show(true);
-    G.commute.autoLocate(rerender);
+    G.commute.autoLocate(() => { rerender(); if (!G.$('glance').hidden) paintGlance(); });
     refreshExtra();
+    openGlance();
     if (G.cur !== 'kadai') G.kadai.refresh();
   });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

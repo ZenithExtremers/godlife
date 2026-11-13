@@ -256,3 +256,13 @@ label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .wx-note{margin-top:10px;font-size:13px;font-weight:700;color:#2f6fd6}
 .rl{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .rl .btn{font-size:12px;padding:6px 8px;white-space:normal}
+/* シンプル表示 */
+.glance{position:fixed;inset:0;z-index:40;background:linear-gradient(160deg,#2e86a8,#123e50);color:#fff;display:flex;align-items:center;justify-content:center;padding:24px;cursor:pointer;-webkit-user-select:none;user-select:none}
+.glance[hidden]{display:none}
+.gl-in{text-align:center;max-width:480px}
+.gl-label{font-size:18px;opacity:.85;font-weight:700}
+.gl-big{font-size:clamp(36px,12vw,72px);font-weight:800;line-height:1.1;margin:10px 0;letter-spacing:-1px;white-space:nowrap}
+.gl-main{font-size:26px;font-weight:800}
+.gl-sub{font-size:16px;opacity:.9;margin-top:10px;line-height:1.6}
+.gl-wx{font-size:15px;opacity:.85;margin-top:14px}
+.gl-tap{font-size:13px;opacity:.6;margin-top:40px}

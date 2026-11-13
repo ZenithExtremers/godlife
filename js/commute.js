@@ -22,17 +22,46 @@
 
   // 設定（LASTCALL の保存値があれば最初に引き継ぐ）
   const SKEY = 'gl.commute';
-  const S = G.load(SKEY, null) || (() => {
-    const s = { dir: 'home', mode: 'now', dayMode: 'auto', arrive: {} };
+  const DEF = { dir: 'home', mode: 'now', dayMode: 'auto', arrive: {} };
+  const S = { ...DEF, ...(G.load(SKEY, null) || (() => {
+    const s = {};
     for (const k of Object.keys(CHOICES)) { const v = Number(G.raw(k)); if (CHOICES[k].includes(v)) s[k] = v; }
     return s;
-  })();
+  })()) }; // 足りない項目は初期値で補う
+  if (!['auto', 'wk', 'ho'].includes(S.dayMode)) S.dayMode = 'auto';
   for (const k of Object.keys(CHOICES)) if (CHOICES[k].includes(S[k])) CFG[k] = S[k];
   const saveS = () => G.save(SKEY, S);
   // 雨モード：S.rain = 'auto'（天気で決める）| 'on' | 'off'。雨なら荒川沖⇄家をバスで計算
   const rainy = () => (S.rain === 'on' ? true : S.rain === 'off' ? false : !!(G.weather && G.weather.rainToday()));
   const HM = () => (rainy() ? CFG.busHome : CFG.bikeHome);
   const HV = () => (rainy() ? 'バス' : '自転車');
+  // 雨の日のバス（並木大橋 ⇄ 荒川沖駅西口）。data/bus.js に時刻表があれば時刻で、なければ「バスで◯分」で計算
+  const dayKey = (tt) => (tt === TIMETABLE.ho ? 'ho' : 'wk');
+  const busTT = (tt) => {
+    const B = typeof BUS !== 'undefined' && BUS[dayKey(tt)];
+    return rainy() && B && B.toAra && B.toAra.length ? B : null;
+  };
+  // 荒川沖に着いてから家まで
+  function inLeg(tt, araArr) {
+    const B = busTT(tt);
+    if (B) {
+      const b = B.fromAra.find(([dep]) => dep >= araArr + BUSCFG.transfer);
+      if (b) return { arrive: b[1] + BUSCFG.walk, label: `バス ${fmt(b[0])} 発 → 並木大橋 ${fmt(b[1])}`, do: `荒川沖 ${fmt(araArr)} 着 → 西口 ${fmt(b[0])} 発のバスで並木大橋へ（家まで歩いて${BUSCFG.walk}分）` };
+    }
+    return { arrive: araArr + HM(), label: HV() + ' ' + HM() + '分', do: `荒川沖 ${fmt(araArr)} 着 → ${HV()}で家へ（${HM()}分）` };
+  }
+  // 家を出て、荒川沖 araDep 発の電車に間に合うまで（バスが時刻表にないときは null）
+  function outLeg(tt, araDep) {
+    const B = busTT(tt);
+    if (B) {
+      const ok = B.toAra.filter(([, arr]) => arr <= araDep - BUSCFG.transfer);
+      const b = ok[ok.length - 1];
+      if (!b) return null;
+      return { leave: b[0] - BUSCFG.walk, do: `並木大橋 ${fmt(b[0])} 発のバスで荒川沖駅西口へ（${fmt(b[1])} 着。バス停まで歩いて${BUSCFG.walk}分）` };
+    }
+    return { leave: araDep - HM() - CFG.margin, do: `荒川沖駅まで${HV()}（${HM()}分）` };
+  }
+  const BUSCFG = { walk: 5, transfer: 3 }; // 家 ⇄ 並木大橋の徒歩、バスと電車の乗り換え
 
   const { pad, fmtMin: fmt, ymd } = G;
 
@@ -106,23 +135,23 @@
     const out = [];
     if (from === 'train') { // 柏→荒川沖の電車に乗っている
       for (const [kDep, type, dest, araArr] of tt.chuDown) out.push({
-        leave: kDep, arrive: araArr + HM(), onboard: [kDep, araArr],
+        leave: kDep, arrive: inLeg(tt, araArr).arrive, onboard: [kDep, araArr],
         search: { from: '柏', to: '荒川沖', dep: kDep },
-        legs: [['柏', fmt(kDep) + ' 発', `${type} ${dest}行（乗車中）`], ['荒川沖', fmt(araArr) + ' 着', HV() + ' ' + HM() + '分']],
-        steps: [{ arr: 'ara', t: kDep, do: `${type} ${dest}行に乗っている` }, { arr: 'home', t: araArr, do: `荒川沖 ${fmt(araArr)} 着 → ${HV()}で家へ（${HM()}分）` }],
+        legs: [['柏', fmt(kDep) + ' 発', `${type} ${dest}行（乗車中）`], ['荒川沖', fmt(araArr) + ' 着', inLeg(tt, araArr).label]],
+        steps: [{ arr: 'ara', t: kDep, do: `${type} ${dest}行に乗っている` }, { arr: 'home', t: araArr, do: inLeg(tt, araArr).do }],
       });
       return out;
     }
     for (const [kDep, type, dest, araArr] of tt.chuDown) {
       const tail = [
         { arr: 'ara', t: kDep, do: `柏 ${fmt(kDep)} 発 ${type} ${dest}行に乗る` },
-        { arr: 'home', t: araArr, do: `荒川沖 ${fmt(araArr)} 着 → ${HV()}で家へ（${HM()}分）` },
+        { arr: 'home', t: araArr, do: inLeg(tt, araArr).do },
       ];
       if (from === 'kashiwa') {
         out.push({
-          leave: kDep - CFG.margin, arrive: araArr + HM(),
+          leave: kDep - CFG.margin, arrive: inLeg(tt, araArr).arrive,
           search: { from: '柏', to: '荒川沖', dep: kDep },
-          legs: [['柏', fmt(kDep) + ' 発', `${type} ${dest}行`], ['荒川沖', fmt(araArr) + ' 着', HV() + ' ' + HM() + '分']],
+          legs: [['柏', fmt(kDep) + ' 発', `${type} ${dest}行`], ['荒川沖', fmt(araArr) + ' 着', inLeg(tt, araArr).label]],
           steps: [{ arr: 'kashiwa', t: kDep - CFG.margin, do: '柏駅のホームへ' }, ...tail],
         });
         continue;
@@ -133,12 +162,12 @@
       const walk = from === 'univ' ? CFG.walkUniv : 0;
       out.push({
         leave: mk - walk - CFG.margin,
-        arrive: araArr + HM(),
+        arrive: inLeg(tt, araArr).arrive,
         search: { from: '南柏', to: '荒川沖', dep: mk },
         legs: [
           ['南柏', fmt(mk) + ' 発', '各駅停車'],
           ['柏', `${fmt(mk + CFG.mkKashiwa)} 着 → ${fmt(kDep)} 発`, `${type} ${dest}行`],
-          ['荒川沖', fmt(araArr) + ' 着', HV() + ' ' + HM() + '分'],
+          ['荒川沖', fmt(araArr) + ' 着', inLeg(tt, araArr).label],
         ],
         // 移動中の表示用（t はその時刻、do はその時にやること）
         steps: [
@@ -186,9 +215,10 @@
     for (const [araDep, type, dest, kArr] of tt.chuUp) {
       const mk = tt.mkUp.find((u) => u - CFG.mkKashiwa >= kArr + CFG.transfer);
       if (mk === undefined) continue;
-      const bike = from === 'home' ? HM() : 0;
+      const out1 = from === 'home' ? outLeg(tt, araDep) : null;
+      if (from === 'home' && !out1) continue; // 間に合うバスがない
       out.push({
-        leave: araDep - bike - CFG.margin,
+        leave: out1 ? out1.leave : araDep - CFG.margin,
         arrive: mk + CFG.walkUniv,
         search: { from: '荒川沖', to: '南柏', dep: araDep },
         legs: [
@@ -197,7 +227,7 @@
           ['南柏', fmt(mk) + ' 着', '徒歩 ' + CFG.walkUniv + '分'],
         ],
         steps: [
-          bike ? { arr: 'ara', t: araDep - CFG.margin - bike, do: `荒川沖駅まで${HV()}（${bike}分）` } : { arr: 'ara', t: araDep - CFG.margin, do: '荒川沖駅のホームへ' },
+          out1 ? { arr: 'ara', t: out1.leave, do: out1.do } : { arr: 'ara', t: araDep - CFG.margin, do: '荒川沖駅のホームへ' },
           { arr: 'kashiwa', t: araDep, do: `荒川沖 ${fmt(araDep)} 発 ${type} ${dest}行に乗る` },
           { arr: 'kashiwa', t: kArr, do: `柏 ${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗り換え` },
           { arr: 'mk', t: mk - CFG.mkKashiwa, do: `柏 ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗る` },
