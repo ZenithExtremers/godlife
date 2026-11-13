@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f5f7a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GOD Life">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="css/app.css">
+<title>GOD Life</title>
+</head>
+<body>
+<header id="hdr">
+  <div class="hrow">
+    <h1 id="title">GOD Life</h1>
+    <span id="hsub" class="hsub"></span>
+    <button class="icon-btn" id="menuBtn" aria-label="メニュー">☰</button>
+  </div>
+  <div id="hextra"></div>
+</header>
+
+<main>
+  <section id="v-home" class="view"></section>
+  <section id="v-class" class="view"></section>
+  <section id="v-kadai" class="view"></section>
+  <section id="v-commute" class="view"></section>
+  <section id="v-campus" class="view"></section>
+</main>
+
+<nav class="tabbar" id="tabbar">
+  <button data-tab="home"><i>🏠</i>ホーム</button>
+  <button data-tab="class"><i>🗓</i>時間割</button>
+  <button data-tab="kadai"><i>📝</i>課題<b class="dot" id="kadaiDot" hidden></b></button>
+  <button data-tab="commute"><i>🚃</i>通学</button>
+  <button data-tab="campus"><i>🍛</i>学食・教室</button>
+</nav>
+
+<div class="toast" id="toast"><span id="toastMsg"></span><button id="toastUndo">元に戻す</button></div>
+
+<div class="sheet" id="sheet"><div class="in">
+  <h3>メニュー</h3>
+  <a class="btn" href="https://rp.reitaku-u.ac.jp/uprx/" target="_blank" rel="noopener">麗澤ポータル（UNIPA）を開く ↗</a>
+  <button class="btn" id="mInstall">ホーム画面に追加する方法</button>
+  <p id="installHelp" hidden><b>iPhone</b>：Safariの共有ボタン →「ホーム画面に追加」<br><b>Android</b>：Chromeの︙メニュー →「ホーム画面に追加」または「アプリをインストール」</p>
+  <button class="btn" id="mBackup">時間割などをバックアップ（コピー）</button>
+  <button class="btn" id="mRestore">バックアップから戻す</button>
+  <button class="btn" id="mLogout">課題の合言葉を入れ直す</button>
+  <p>時間割・完了の印・設定はこの端末にだけ保存されます。課題は数時間おきに自動で更新されます。</p>
+  <button class="btn" id="mClose">閉じる</button>
+</div></div>
+
+<div class="sheet" id="editor"><div class="in" id="editorIn"></div></div>
+
+<script src="data/trains.js"></script>
+<script src="js/core.js"></script>
+<script src="js/classes.js"></script>
+<script src="js/kadai.js"></script>
+<script src="js/commute.js"></script>
+<script src="js/campus.js"></script>
+<script src="js/home.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

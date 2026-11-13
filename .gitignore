@@ -1,0 +1,8 @@
+scraper/debug/
+scraper/state/
+scraper/kadai.json
+scraper/config.json
+scraper/kadai.ics
+__pycache__/
+_site/
+kadai.json
