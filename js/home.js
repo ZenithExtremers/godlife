@@ -99,7 +99,7 @@
     const left = o.leave - plan.nowAbs;
     return row(`G.commute.open('school','now')`, label,
       `${o.tomorrow ? '明日 ' : ''}${G.fmtMin(o.leave)} に${P.short}を出る`,
-      `あと${G.dur(left)}・大学 ${G.fmtMin(o.arrive)} 着${note ? '・' + note : ''}`);
+      `あと${G.dur(left)}・大学 ${G.fmtMin(o.arrive)} 着${note ? '・' + note : ''}${plan.after ? `<br>1本後：${G.fmtMin(plan.after.leave)} 出発 → 大学 ${G.fmtMin(plan.after.arrive)} 着` : ''}`);
   }
 
   // ③ 帰り（授業中なら授業後の電車）
@@ -116,7 +116,8 @@
     if (!o) return row(`G.commute.open('home','now')`, label, '候補がありません', '');
     return row(`G.commute.open('home','now')`, label,
       `${o.tomorrow ? '明日 ' : ''}${G.fmtMin(o.leave)} に${P.short}を出る`,
-      after ? `家に ${G.fmtMin(o.arrive)} 着` : `あと${G.dur(o.leave - plan.nowAbs)}・家に ${G.fmtMin(o.arrive)} 着`);
+      (after ? `家に ${G.fmtMin(o.arrive)} 着` : `あと${G.dur(o.leave - plan.nowAbs)}・家に ${G.fmtMin(o.arrive)} 着`) +
+      (plan.after ? `<br>1本後：${G.fmtMin(plan.after.leave)} 出発 → 家 ${G.fmtMin(plan.after.arrive)} 着` : ''));
   }
 
   // 移動中カード（「家を出た」「大学を出た」を押したあと）

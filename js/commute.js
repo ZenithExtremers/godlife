@@ -189,19 +189,24 @@
     const svc = new Date(now);
     if (now.getHours() < 3) { svc.setDate(svc.getDate() - 1); nowMin += 1440; }
     const next = new Date(svc); next.setDate(next.getDate() + 1);
-    let opts;
+    let opts, before = null;
     if (moveOnly(dir, from)) opts = [moveOption(dir, Math.ceil(nowMin))];
     else {
-      opts = build(dir, TIMETABLE[typeOf(svc)], from).filter((o) => o.leave >= nowMin);
+      const today = build(dir, TIMETABLE[typeOf(svc)], from);
+      opts = today.filter((o) => o.leave >= nowMin);
       if (opts.length < 4) opts = opts.concat(build(dir, TIMETABLE[typeOf(next)], from).map((o) => shift(o, 1440)));
       opts = opts.slice(0, 4);
+      // 1本前：出発時刻を過ぎたばかりの電車（3時間以内）
+      const past = today.filter((o) => o.leave < nowMin && o.leave > nowMin - 180);
+      before = past[past.length - 1] || null;
+      if (before) { before.leaveAbs = before.leave; before.tomorrow = false; }
     }
     for (const o of opts) {
       const d = new Date(svc); d.setDate(d.getDate() + Math.floor(o.leave / 1440));
       o.tomorrow = ymd(d) !== ymd(now);
       o.leaveAbs = o.leave;
     }
-    return { opts, base: svc, nowAbs: nowMin, type: typeOf(svc), from };
+    return { opts, before, after: opts[1] || null, base: svc, nowAbs: nowMin, type: typeOf(svc), from };
   }
   // 「到着時刻を指定」：T（分）までに着く一番遅い電車（opts[0]）と、その1本前（before）・1本後（after）
   // dayOffset を渡すと「今日から何日後の T」に固定する（ホームで次の授業日を出すとき用）
@@ -244,7 +249,7 @@
   const jrLink = (o, base) => (o.search ? `<a class="jr" href="${routeUrl(o, base)}">Yahoo!乗換案内で遅れを確認 ›</a>` : '');
   // 候補1本分のカード。tag は「1本前」「1本後」などの見出し
   const itemHtml = (o, base, nowAbs, to, tag) => {
-    const inner = `<div class="row"><span>${tag ? `<span class="tag">${tag}</span>` : ''}${o.tomorrow ? '明日 ' : ''}${fmt(o.leave)} 出発 <small>${o.leaveAbs - nowAbs >= 0 ? 'あと' + G.dur(o.leaveAbs - nowAbs) : '出発時刻を過ぎています'}</small></span><span>${to} ${fmt(o.arrive)} 着</span></div>
+    const inner = `<div class="row"><span>${tag ? `<span class="tag">${tag}</span>` : ''}${o.tomorrow ? '明日 ' : ''}${fmt(o.leave)} 出発 <small>${o.leaveAbs - nowAbs >= 0 ? 'あと' + G.dur(o.leaveAbs - nowAbs) : tag ? '' : '出発時刻を過ぎています'}</small></span><span>${to} ${fmt(o.arrive)} 着</span></div>
       <div class="sub">${o.legs.map(([st, t]) => `${st} ${t.split(' → ').pop()}`).join(' ・ ')}</div>`;
     return o.search ? `<li><a class="card" style="display:block;color:inherit;text-decoration:none" href="${routeUrl(o, base)}">${inner}</a></li>` : `<li><div class="card">${inner}</div></li>`;
   };
@@ -390,8 +395,10 @@
           <div>${to}に <b>${fmt(main.arrive)}</b> 着</div></div>
           ${legsHtml(main)}${jrLink(main, plan.base)}</section>`;
       }
-      listTitle = '次の候補';
-      listItems = plan.opts.slice(1).map((o) => itemHtml(o, plan.base, plan.nowAbs, to)).join('');
+      listTitle = '前後の電車';
+      listItems = '';
+      if (plan.before) listItems += itemHtml(plan.before, plan.base, plan.nowAbs, to, `1本前・<b class="late">${Math.ceil(plan.nowAbs - plan.before.leave)}分前に出発時刻</b>`);
+      if (plan.after) listItems += itemHtml(plan.after, plan.base, plan.nowAbs, to, '1本後');
     }
     h += `<a class="btn" style="display:block;margin-bottom:10px;text-align:left" href="${infoLink}">運行情報（Yahoo!乗換案内）›</a>`;
     h += mainHtml;
