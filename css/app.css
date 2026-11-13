@@ -178,3 +178,17 @@ label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .crow .t3{font-size:13px;color:var(--sub);margin-top:1px}
 .crow .go{color:var(--sub);font-size:20px}
 .tt .c.online{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.18) 0 6px,transparent 6px 12px)}
+.tripbtns{padding:4px 0 12px}.tripbtns .btn{padding:11px 6px;font-size:15px;font-weight:700}
+.trip{border:2px solid var(--ok)}
+.trip .label{font-size:13px;color:var(--sub);font-weight:600}
+.trip .big{font-size:40px;font-weight:800;color:var(--ok);line-height:1.15;margin-top:4px}
+.trip .meta{font-size:15px;font-weight:700;margin-top:2px}
+.trip .row2 .btn{padding:10px 4px}
+.steps{list-style:none;margin:12px 0 6px;padding:0;border-top:1px solid var(--line)}
+.steps li{display:flex;gap:10px;padding:7px 0 7px 18px;font-size:14px;position:relative;color:var(--text)}
+.steps li::before{content:'';position:absolute;left:3px;top:13px;width:8px;height:8px;border-radius:50%;background:var(--line)}
+.steps li b{width:44px;flex:none;font-variant-numeric:tabular-nums}
+.steps li.done{color:var(--sub);text-decoration:line-through}
+.steps li.done::before{background:var(--sub)}
+.steps li.cur{font-weight:800}
+.steps li.cur::before{background:var(--ok);box-shadow:0 0 0 4px rgba(30,158,90,.25)}

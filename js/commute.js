@@ -72,6 +72,14 @@
           ['柏', `${fmt(mk + CFG.mkKashiwa)} 着 → ${fmt(kDep)} 発`, `${type} ${dest}行`],
           ['荒川沖', fmt(araArr) + ' 着', '自転車 ' + CFG.bikeHome + '分'],
         ],
+        // 移動中の表示用（t はその時刻、do はその時にやること）
+        steps: [
+          { t: mk - CFG.walkUniv, do: `南柏駅まで歩く（${CFG.walkUniv}分）` },
+          { t: mk, do: `南柏 ${fmt(mk)} 発 各駅停車に乗る` },
+          { t: mk + CFG.mkKashiwa, do: `柏で乗り換え → ${fmt(kDep)} 発 ${type} ${dest}行` },
+          { t: kDep, do: `柏 ${fmt(kDep)} 発 ${type} ${dest}行に乗る` },
+          { t: araArr, do: `荒川沖 ${fmt(araArr)} 着 → 自転車で家へ（${CFG.bikeHome}分）` },
+        ],
       });
     }
     return prune(out);
@@ -91,6 +99,13 @@
           ['柏', `${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発`, '各駅停車'],
           ['南柏', fmt(mk) + ' 着', '徒歩 ' + CFG.walkUniv + '分'],
         ],
+        steps: [
+          { t: araDep - CFG.margin - CFG.bikeHome, do: `荒川沖駅まで自転車（${CFG.bikeHome}分）` },
+          { t: araDep, do: `荒川沖 ${fmt(araDep)} 発 ${type} ${dest}行に乗る` },
+          { t: kArr, do: `柏 ${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗り換え` },
+          { t: mk - CFG.mkKashiwa, do: `柏 ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗る` },
+          { t: mk, do: `南柏 ${fmt(mk)} 着 → 大学まで歩く（${CFG.walkUniv}分）` },
+        ],
       });
     }
     return prune(out);
@@ -100,7 +115,7 @@
     list.sort((a, b) => a.leave - b.leave);
     return list.filter((o, i) => !list.slice(i + 1).some((x) => x.arrive <= o.arrive));
   }
-  const shift = (o, k) => ({ ...o, leave: o.leave + k, arrive: o.arrive + k, search: { ...o.search, dep: o.search.dep + k } });
+  const shift = (o, k) => ({ ...o, leave: o.leave + k, arrive: o.arrive + k, search: { ...o.search, dep: o.search.dep + k }, steps: o.steps.map((x) => ({ ...x, t: x.t + k })) });
   const builder = (dir) => (dir === 'home' ? homeOptions : schoolOptions);
 
   // 「今すぐ」：これから乗れる候補（深夜0〜3時は前日のダイヤ扱い）
@@ -251,7 +266,27 @@
     v.addEventListener('change', onChange);
   }
 
-  G.commute = { nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
+  /* ---- 「家を出た」「大学を出た」：出た時刻から乗れる電車をたどる ---- */
+  const TKEY = 'gl.trip';
+  function tripStart(dir) {
+    const old = G.load(TKEY, null);
+    G.save(TKEY, { dir, t: Date.now() });
+    return old;
+  }
+  const tripEnd = () => G.raw(TKEY, null);
+  function trip(now) {
+    const tr = G.load(TKEY, null);
+    if (!tr) return null;
+    const dep = new Date(tr.t);
+    // 出た時刻の1分前までに出ていれば乗れる電車を探す（ボタンを押すのが少し遅れても大丈夫なように）
+    const plan = nowPlan(tr.dir, new Date(tr.t - 60e3));
+    const o = plan.opts[0];
+    const nowAbs = plan.nowAbs + (now - dep) / 60000 + 1;
+    if (!o || nowAbs > o.arrive + 30 || now - dep > 4 * 3600e3) { tripEnd(); return null; } // 着いて30分たったら自動で終わり
+    return { dir: tr.dir, dep, o, base: plan.base, nowAbs };
+  }
+
+  G.commute = { trip, tripStart, tripEnd, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
   // 秒まで数えるので、表示中は1秒ごとに描き直す（入力中は止める）
   G.reg('commute', { title: '通学', render, tick: 1, skipTick: () => document.activeElement && document.activeElement.id === 'lcArrive' });
 })();

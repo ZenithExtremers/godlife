@@ -1,6 +1,6 @@
 // 画面はネット優先・つながらないときはキャッシュ。課題・学食・教室のデータはキャッシュしない
 // 時刻表やファイル構成を変えたら VERSION を上げる
-const VERSION = 'godlife-v3';
+const VERSION = 'godlife-v4';
 const SHELL = ['./', 'index.html', 'css/app.css', 'data/trains.js',
   'js/core.js', 'js/classes.js', 'js/ocr.js', 'js/kadai.js', 'js/commute.js', 'js/campus.js', 'js/home.js', 'js/app.js',
   'manifest.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];

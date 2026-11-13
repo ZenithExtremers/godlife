@@ -100,12 +100,53 @@
       after ? `家に ${G.fmtMin(o.arrive)} 着` : `あと${G.dur(o.leave - plan.nowAbs)}・家に ${G.fmtMin(o.arrive)} 着`);
   }
 
+  // 移動中カード（「家を出た」「大学を出た」を押したあと）
+  function tripCard(now, cs) {
+    const tr = G.commute.trip(now);
+    if (!tr) return '';
+    const { o, nowAbs: n } = tr, school = tr.dir === 'school';
+    const to = school ? '大学' : '家';
+    // 最初の手順（駅まで移動）は出た時点で始まっているので、次にやることは2つ目から探す
+    let idx = o.steps.findIndex((x, i) => i > 0 && x.t > n);
+    const next = idx === -1 ? null : o.steps[idx];
+    const cur = idx === -1 ? o.steps.length - 1 : idx - 1;
+    let note = '';
+    if (school && !o.tomorrow) {
+      const during = cs.campus.find((x) => x.s < o.arrive && x.e > o.arrive);
+      const nextC = cs.campus.find((x) => x.s >= o.arrive);
+      if (during) note = `<span class="late">⚠ ${during.n}限（${G.esc(during.c.name)}）に${Math.round(o.arrive - during.s)}分遅れて着く</span>`;
+      else if (nextC) note = `${nextC.n}限（${G.esc(nextC.c.name)}）の${G.dur(nextC.s - o.arrive)}前に着く`;
+    }
+    const steps = o.steps.map((x, i) => `<li class="${i < cur ? 'done' : i === cur ? 'cur' : ''}"><b>${G.fmtMin(x.t)}</b><span>${G.esc(x.do)}</span></li>`).join('');
+    return `<div class="card trip"><div class="label">🚃 移動中（${school ? '家→大学' : '大学→家'}）・${tr.dep.getHours()}:${G.pad(tr.dep.getMinutes())} 出発</div>
+      <div class="muted" style="margin-top:6px">いま：${G.esc(o.steps[cur].do)}</div>
+      <div class="big">${next ? `あと${G.dur(Math.max(0, next.t - n))}` : n < o.arrive ? `あと${G.dur(o.arrive - n)}` : `まもなく${to}`}</div>
+      <div class="meta">${next ? '次：' + G.esc(next.do) : `${to}に ${G.fmtMin(o.arrive)} に着く予定`}</div>
+      <ol class="steps">${steps}<li class="${n >= o.arrive ? 'cur' : ''}"><b>${G.fmtMin(o.arrive)}</b><span>${to}に着く</span></li></ol>
+      ${note ? `<div class="meta">${note}</div>` : ''}
+      <div class="row2" style="margin-top:10px"><button class="btn pri" onclick="G.commute.tripEnd();G.mods.home.render()">✓ 着いた</button>
+      <a class="btn" href="${G.commute.routeUrl(o, tr.base)}">遅れを確認</a>
+      <button class="btn" onclick="G.commute.tripEnd();G.mods.home.render()">取り消す</button></div></div>`;
+  }
+  function leave(dir) {
+    const old = G.commute.tripStart(dir);
+    G.mods.home.render(); window.scrollTo(0, 0);
+    G.toast(dir === 'school' ? '家を出ました。いってらっしゃい！' : '大学を出ました。おつかれさま！', () => {
+      if (old) G.save('gl.trip', old); else G.commute.tripEnd();
+      G.mods.home.render();
+    });
+  }
+
   function commuteTile(now, cs) {
     const min = G.minOfDay(now);
     // 家にいそうな時間（1コマ目の前・授業のない日の午前）は「行き」を上に
     const atHome = cs.first ? min < cs.first.s : min < 12 * 60;
-    const rows = atHome ? [classRow(now), goNowRow(now, cs), homeRow(now, cs)] : [homeRow(now, cs), classRow(now), goNowRow(now, cs)];
-    return `<div class="gh">🚃 通学<a href="#commute">時刻表 ›</a></div><div class="card crows">${rows.filter(Boolean).join('')}</div>`;
+    let rows = atHome ? [classRow(now), goNowRow(now, cs), homeRow(now, cs)] : [homeRow(now, cs), classRow(now), goNowRow(now, cs)];
+    // 移動中は、その向きの行は出さない（移動中カードに出ている）
+    const tr = G.commute.trip(now);
+    if (tr) rows = tr.dir === 'school' ? [homeRow(now, cs)] : [classRow(now), goNowRow(now, cs)];
+    const btns = `<div class="row2 tripbtns"><button class="btn${atHome ? ' pri' : ''}" onclick="G.home.leave('school')">🚪 家を出た</button><button class="btn${atHome ? '' : ' pri'}" onclick="G.home.leave('home')">🏫 大学を出た</button></div>`;
+    return `<div class="gh">🚃 通学<a href="#commute">時刻表 ›</a></div><div class="card crows">${rows.filter(Boolean).join('')}${btns}</div>`;
   }
 
   function kadaiTile() {
@@ -137,8 +178,9 @@
   function render() {
     const now = new Date();
     const cs = G.classes.status(now);
-    G.$('v-home').innerHTML = hero(now, cs) + commuteTile(now, cs) + kadaiTile() + menuTile(now) + todayList(now, cs);
+    G.$('v-home').innerHTML = tripCard(now, cs) + hero(now, cs) + commuteTile(now, cs) + kadaiTile() + menuTile(now) + todayList(now, cs);
   }
 
-  G.reg('home', { title: 'GOD Life', render, tick: 30 });
+  G.home = { leave };
+  G.reg('home', { title: 'GOD Life', render, tick: 15 });
 })();
