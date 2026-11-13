@@ -69,9 +69,13 @@
 
   // ② 今から行くなら
   function goNowRow(now, cs) {
-    const plan = G.commute.nowPlan('school', now);
+    const from = G.commute.fromFor('school');
+    if (!from) return ''; // 大学にいる
+    const P = G.commute.PLACES[from];
+    const label = from === 'home' ? '今から行くなら' : `今から行くなら（📍${P.name}から）`;
+    const plan = G.commute.nowPlan('school', now, from);
     const o = plan.opts[0];
-    if (!o) return row(`G.commute.open('school','now')`, '今から行くなら', '候補がありません', '');
+    if (!o) return row(`G.commute.open('school','now')`, label, '候補がありません', '');
     let note = '';
     if (!o.tomorrow) {
       const mine = cs.campus.find((x) => x.s >= o.arrive);
@@ -81,22 +85,25 @@
       else { const p = G.PERIODS.find((x) => x.s >= o.arrive); note = p ? `${p.n}限に間に合う` : '5限にも間に合いません'; }
     }
     const left = o.leave - plan.nowAbs;
-    return row(`G.commute.open('school','now')`, '今から行くなら',
-      `${o.tomorrow ? '明日 ' : ''}${G.fmtMin(o.leave)} に家を出る`,
+    return row(`G.commute.open('school','now')`, label,
+      `${o.tomorrow ? '明日 ' : ''}${G.fmtMin(o.leave)} に${P.short}を出る`,
       `あと${G.dur(left)}・大学 ${G.fmtMin(o.arrive)} 着${note ? '・' + note : ''}`);
   }
 
   // ③ 帰り（授業中なら授業後の電車）
   function homeRow(now, cs) {
     const min = G.minOfDay(now);
-    const after = cs.last && min < cs.last.e && min >= cs.first.s ? cs.last.e : null;
+    const from = G.commute.fromFor('home');
+    if (!from) return ''; // 家にいる
+    const P = G.commute.PLACES[from];
+    const after = from === 'univ' && cs.last && min < cs.last.e && min >= cs.first.s ? cs.last.e : null;
     const base = after ? new Date(new Date(now).setHours(0, after, 0, 0)) : now;
-    const plan = G.commute.nowPlan('home', base);
+    const plan = G.commute.nowPlan('home', base, from);
     const o = plan.opts[0];
-    const label = after ? `授業後（${G.fmtMin(after)} 終了）に帰るなら` : '今から帰るなら';
+    const label = after ? `授業後（${G.fmtMin(after)} 終了）に帰るなら` : from === 'univ' ? '今から帰るなら' : `今から帰るなら（📍${P.name}から）`;
     if (!o) return row(`G.commute.open('home','now')`, label, '候補がありません', '');
     return row(`G.commute.open('home','now')`, label,
-      `${o.tomorrow ? '明日 ' : ''}${G.fmtMin(o.leave)} に大学を出る`,
+      `${o.tomorrow ? '明日 ' : ''}${G.fmtMin(o.leave)} に${P.short}を出る`,
       after ? `家に ${G.fmtMin(o.arrive)} 着` : `あと${G.dur(o.leave - plan.nowAbs)}・家に ${G.fmtMin(o.arrive)} 着`);
   }
 
@@ -146,7 +153,8 @@
     const tr = G.commute.trip(now);
     if (tr) rows = tr.dir === 'school' ? [homeRow(now, cs)] : [classRow(now), goNowRow(now, cs)];
     const btns = `<div class="row2 tripbtns"><button class="btn${atHome ? ' pri' : ''}" onclick="G.home.leave('school')">🚪 家を出た</button><button class="btn${atHome ? '' : ' pri'}" onclick="G.home.leave('home')">🏫 大学を出た</button></div>`;
-    return `<div class="gh">🚃 通学<a href="#commute">時刻表 ›</a></div><div class="card crows">${rows.filter(Boolean).join('')}${btns}</div>`;
+    const loc = G.commute.getLoc();
+    return `<div class="gh">🚃 通学${loc ? `<span class="locchip">📍${G.commute.PLACES[loc].name}</span>` : ''}<a href="#commute">${loc ? '現在地を変える' : '現在地・時刻表'} ›</a></div><div class="card crows">${rows.filter(Boolean).join('')}${btns}</div>`;
   }
 
   function kadaiTile() {

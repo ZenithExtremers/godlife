@@ -45,6 +45,7 @@
   const appIntent = (path, webUrl) =>
     `intent://${path}#Intent;scheme=yjtransit;package=${YAHOO_PKG};S.browser_fallback_url=${encodeURIComponent(webUrl)};end`;
   function routeUrl(o, svc) {
+    if (!o.search) return '#';
     const d = new Date(svc); d.setDate(d.getDate() + Math.floor(o.search.dep / 1440));
     const m = ((o.search.dep % 1440) + 1440) % 1440, hh = Math.floor(m / 60), mn = m % 60;
     const ft = `from=${encodeURIComponent(o.search.from)}&to=${encodeURIComponent(o.search.to)}`;
@@ -56,15 +57,58 @@
   const INFO_WEB = 'https://transit.yahoo.co.jp/diainfo/area/4';
   const infoLink = isAndroid ? appIntent('diainfo', INFO_WEB) : INFO_WEB;
 
-  // 帰り：大学 → 南柏 → 柏（乗換）→ 荒川沖 → 家
-  function homeOptions(tt) {
+  /* ---- 現在地 ---- */
+  // 経路上の地点。lat/lng は GPS で一番近い地点を選ぶとき用（家は端末に登録した位置）
+  const PLACES = {
+    home: { name: '家', short: '家' },
+    ara: { name: '荒川沖駅', short: '荒川沖', lat: 36.0306, lng: 140.1742, r: 900 },
+    kashiwa: { name: '柏駅', short: '柏', lat: 35.8623, lng: 139.9710, r: 700 },
+    mk: { name: '南柏駅', short: '南柏', lat: 35.8441, lng: 139.9540, r: 600 },
+    univ: { name: '麗澤大学', short: '大学', lat: 35.8325, lng: 139.9560, r: 700 },
+  };
+  const ORDER = ['home', 'ara', 'kashiwa', 'mk', 'univ'];
+  const LKEY = 'gl.loc';
+  // 選んだ現在地は3時間で「自動」（行きは家、帰りは大学）に戻す
+  function getLoc() {
+    const l = G.load(LKEY, null);
+    if (!l || Date.now() - l.t > 3 * 3600e3) return null;
+    return l.loc;
+  }
+  const setLoc = (loc) => (loc ? G.save(LKEY, { loc, t: Date.now() }) : G.raw(LKEY, null));
+  const defFrom = (dir) => (dir === 'school' ? 'home' : 'univ');
+  // その向きで、現在地から出発できるか（行きで大学にいる、などは無理）
+  function fromFor(dir) {
+    const l = getLoc();
+    if (!l) return defFrom(dir);
+    const i = ORDER.indexOf(l);
+    if (dir === 'school' && i >= ORDER.length - 1) return null;
+    if (dir === 'home' && i <= 0) return null;
+    return l;
+  }
+
+  // 帰り：大学 → 南柏 → 柏（乗換）→ 荒川沖 → 家。from で途中駅から乗る
+  function homeOptions(tt, from = 'univ') {
     const out = [];
     for (const [kDep, type, dest, araArr] of tt.chuDown) {
+      const tail = [
+        { t: kDep, do: `柏 ${fmt(kDep)} 発 ${type} ${dest}行に乗る` },
+        { t: araArr, do: `荒川沖 ${fmt(araArr)} 着 → 自転車で家へ（${CFG.bikeHome}分）` },
+      ];
+      if (from === 'kashiwa') {
+        out.push({
+          leave: kDep - CFG.margin, arrive: araArr + CFG.bikeHome,
+          search: { from: '柏', to: '荒川沖', dep: kDep },
+          legs: [['柏', fmt(kDep) + ' 発', `${type} ${dest}行`], ['荒川沖', fmt(araArr) + ' 着', '自転車 ' + CFG.bikeHome + '分']],
+          steps: [{ t: kDep - CFG.margin, do: '柏駅のホームへ' }, ...tail],
+        });
+        continue;
+      }
       let mk = null;
       for (const d of tt.mkDown) if (d + CFG.mkKashiwa + CFG.transfer <= kDep) mk = d; else break;
       if (mk === null) continue;
+      const walk = from === 'univ' ? CFG.walkUniv : 0;
       out.push({
-        leave: mk - CFG.walkUniv - CFG.margin,
+        leave: mk - walk - CFG.margin,
         arrive: araArr + CFG.bikeHome,
         search: { from: '南柏', to: '荒川沖', dep: mk },
         legs: [
@@ -74,24 +118,37 @@
         ],
         // 移動中の表示用（t はその時刻、do はその時にやること）
         steps: [
-          { t: mk - CFG.walkUniv, do: `南柏駅まで歩く（${CFG.walkUniv}分）` },
+          walk ? { t: mk - walk, do: `南柏駅まで歩く（${walk}分）` } : { t: mk - CFG.margin, do: '南柏駅のホームへ' },
           { t: mk, do: `南柏 ${fmt(mk)} 発 各駅停車に乗る` },
           { t: mk + CFG.mkKashiwa, do: `柏で乗り換え → ${fmt(kDep)} 発 ${type} ${dest}行` },
-          { t: kDep, do: `柏 ${fmt(kDep)} 発 ${type} ${dest}行に乗る` },
-          { t: araArr, do: `荒川沖 ${fmt(araArr)} 着 → 自転車で家へ（${CFG.bikeHome}分）` },
+          ...tail,
         ],
       });
     }
     return prune(out);
   }
-  // 行き：家 → 荒川沖 → 柏（乗換）→ 南柏 → 大学
-  function schoolOptions(tt) {
+  // 行き：家 → 荒川沖 → 柏（乗換）→ 南柏 → 大学。from で途中駅から乗る
+  function schoolOptions(tt, from = 'home') {
     const out = [];
+    if (from === 'kashiwa') {
+      for (const mk of tt.mkUp) {
+        const kd = mk - CFG.mkKashiwa;
+        out.push({
+          leave: kd - CFG.margin, arrive: mk + CFG.walkUniv,
+          search: { from: '柏', to: '南柏', dep: kd },
+          legs: [['柏', fmt(kd) + ' 発', '各駅停車'], ['南柏', fmt(mk) + ' 着', '徒歩 ' + CFG.walkUniv + '分']],
+          steps: [{ t: kd - CFG.margin, do: '柏駅のホームへ' }, { t: kd, do: `柏 ${fmt(kd)} 発 各駅停車に乗る` },
+            { t: mk, do: `南柏 ${fmt(mk)} 着 → 大学まで歩く（${CFG.walkUniv}分）` }],
+        });
+      }
+      return prune(out);
+    }
     for (const [araDep, type, dest, kArr] of tt.chuUp) {
       const mk = tt.mkUp.find((u) => u - CFG.mkKashiwa >= kArr + CFG.transfer);
       if (mk === undefined) continue;
+      const bike = from === 'home' ? CFG.bikeHome : 0;
       out.push({
-        leave: araDep - CFG.bikeHome - CFG.margin,
+        leave: araDep - bike - CFG.margin,
         arrive: mk + CFG.walkUniv,
         search: { from: '荒川沖', to: '南柏', dep: araDep },
         legs: [
@@ -100,7 +157,7 @@
           ['南柏', fmt(mk) + ' 着', '徒歩 ' + CFG.walkUniv + '分'],
         ],
         steps: [
-          { t: araDep - CFG.margin - CFG.bikeHome, do: `荒川沖駅まで自転車（${CFG.bikeHome}分）` },
+          bike ? { t: araDep - CFG.margin - bike, do: `荒川沖駅まで自転車（${bike}分）` } : { t: araDep - CFG.margin, do: '荒川沖駅のホームへ' },
           { t: araDep, do: `荒川沖 ${fmt(araDep)} 発 ${type} ${dest}行に乗る` },
           { t: kArr, do: `柏 ${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗り換え` },
           { t: mk - CFG.mkKashiwa, do: `柏 ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗る` },
@@ -110,38 +167,49 @@
     }
     return prune(out);
   }
+  // 電車に乗らない区間（南柏→大学は徒歩、荒川沖→家は自転車）
+  const moveOnly = (dir, from) => (dir === 'school' && from === 'mk') || (dir === 'home' && from === 'ara');
+  function moveOption(dir, start) {
+    const m = dir === 'school' ? CFG.walkUniv : CFG.bikeHome;
+    const what = dir === 'school' ? `大学まで歩く（${m}分）` : `家まで自転車（${m}分）`;
+    return { leave: start, arrive: start + m, search: null, move: true,
+      legs: [[dir === 'school' ? '南柏' : '荒川沖', fmt(start) + ' 出発', what]], steps: [{ t: start, do: what }] };
+  }
   // 同じ時刻以前に着く、もっと遅く出られる候補があれば、早く出るほうは省く
   function prune(list) {
     list.sort((a, b) => a.leave - b.leave);
     return list.filter((o, i) => !list.slice(i + 1).some((x) => x.arrive <= o.arrive));
   }
-  const shift = (o, k) => ({ ...o, leave: o.leave + k, arrive: o.arrive + k, search: { ...o.search, dep: o.search.dep + k }, steps: o.steps.map((x) => ({ ...x, t: x.t + k })) });
-  const builder = (dir) => (dir === 'home' ? homeOptions : schoolOptions);
+  const shift = (o, k) => ({ ...o, leave: o.leave + k, arrive: o.arrive + k, search: o.search && { ...o.search, dep: o.search.dep + k }, steps: o.steps.map((x) => ({ ...x, t: x.t + k })) });
+  const build = (dir, tt, from) => (dir === 'home' ? homeOptions(tt, from) : schoolOptions(tt, from));
 
-  // 「今すぐ」：これから乗れる候補（深夜0〜3時は前日のダイヤ扱い）
-  function nowPlan(dir, now) {
+  // 「今すぐ」：これから乗れる候補（深夜0〜3時は前日のダイヤ扱い）。from を省くと家／大学から
+  function nowPlan(dir, now, from = defFrom(dir)) {
     let nowMin = G.minOfDay(now);
     const svc = new Date(now);
     if (now.getHours() < 3) { svc.setDate(svc.getDate() - 1); nowMin += 1440; }
     const next = new Date(svc); next.setDate(next.getDate() + 1);
-    const build = builder(dir);
-    let opts = build(TIMETABLE[typeOf(svc)]).filter((o) => o.leave >= nowMin);
-    if (opts.length < 4) opts = opts.concat(build(TIMETABLE[typeOf(next)]).map((o) => shift(o, 1440)));
-    opts = opts.slice(0, 4);
+    let opts;
+    if (moveOnly(dir, from)) opts = [moveOption(dir, Math.ceil(nowMin))];
+    else {
+      opts = build(dir, TIMETABLE[typeOf(svc)], from).filter((o) => o.leave >= nowMin);
+      if (opts.length < 4) opts = opts.concat(build(dir, TIMETABLE[typeOf(next)], from).map((o) => shift(o, 1440)));
+      opts = opts.slice(0, 4);
+    }
     for (const o of opts) {
       const d = new Date(svc); d.setDate(d.getDate() + Math.floor(o.leave / 1440));
       o.tomorrow = ymd(d) !== ymd(now);
       o.leaveAbs = o.leave;
     }
-    return { opts, base: svc, nowAbs: nowMin, type: typeOf(svc) };
+    return { opts, base: svc, nowAbs: nowMin, type: typeOf(svc), from };
   }
-  // 「到着時刻を指定」：T（分）までに着く候補を遅い順に。過ぎていれば翌日
+  // 「到着時刻を指定」：T（分）までに着く一番遅い電車（opts[0]）と、その1本前（before）・1本後（after）
   // dayOffset を渡すと「今日から何日後の T」に固定する（ホームで次の授業日を出すとき用）
   // 特例：2限に行くときは、10:40ちょうどに着く電車ではなく荒川沖 9:14 発に乗る
   const SPECIAL = { period: 2, from: '荒川沖', dep: 9 * 60 + 14 };
   const specialOn = () => S.special2 !== false;
-  const isSpecialT = (dir, T) => dir === 'school' && specialOn() && T === G.PERIODS.find((p) => p.n === SPECIAL.period).s;
-  function arrivePlan(dir, now, T, dayOffset) {
+  const isSpecialT = (dir, T, from) => dir === 'school' && (from === 'home' || from === 'ara') && specialOn() && T === G.PERIODS.find((p) => p.n === SPECIAL.period).s;
+  function arrivePlan(dir, now, T, dayOffset, from = defFrom(dir)) {
     const nowClock = G.minOfDay(now);
     const D = dayStart(now);
     if (dayOffset != null) D.setDate(D.getDate() + dayOffset);
@@ -149,12 +217,20 @@
     const isTomorrow = ymd(D) !== ymd(now);
     const nowAbs = (now - D) / 60000;
     const prev = new Date(D); prev.setDate(prev.getDate() - 1);
-    const build = builder(dir);
-    const opts = build(TIMETABLE[typeOf(prev)]).map((o) => shift(o, -1440)).concat(build(TIMETABLE[typeOf(D)]))
-      .filter((o) => o.arrive <= T && (!isSpecialT(dir, T) || o.search.dep <= SPECIAL.dep))
-      .sort((a, b) => b.leave - a.leave).slice(0, 4);
-    for (const o of opts) { o.leaveAbs = o.leave; o.tomorrow = isTomorrow && o.leave >= 0; }
-    return { opts, base: D, nowAbs, isTomorrow, type: typeOf(D), special: isSpecialT(dir, T) };
+    const sp = isSpecialT(dir, T, from);
+    let all, ok;
+    if (moveOnly(dir, from)) { all = [moveOption(dir, T - (dir === 'school' ? CFG.walkUniv : CFG.bikeHome))]; ok = all; }
+    else {
+      all = build(dir, TIMETABLE[typeOf(prev)], from).map((o) => shift(o, -1440)).concat(build(dir, TIMETABLE[typeOf(D)], from))
+        .sort((a, b) => a.leave - b.leave);
+      ok = all.filter((o) => o.arrive <= T && (!sp || o.search.dep <= SPECIAL.dep));
+    }
+    const main = ok[ok.length - 1] || null;
+    const before = ok.length > 1 ? ok[ok.length - 2] : null;
+    const after = main ? all.find((o) => o.leave > main.leave) || null : all.find((o) => o.arrive > T) || null;
+    const opts = main ? [main] : [];
+    for (const o of [main, before, after]) if (o) { o.leaveAbs = o.leave; o.tomorrow = isTomorrow && o.leave >= 0; }
+    return { opts, before, after, base: D, nowAbs, isTomorrow, type: typeOf(D), special: sp, from };
   }
 
   /* ---- 画面 ---- */
@@ -165,20 +241,71 @@
   }
   const getArrive = () => S.arrive[S.dir] || (S.dir === 'school' ? '08:50' : '18:00');
   const legsHtml = (o) => `<ol class="legs">${o.legs.map(([st, t, how]) => `<li><b>${st}</b><span>${t}</span><em>${how}</em></li>`).join('')}</ol>`;
-  const listHtml = (opts, base, nowAbs, to) => opts.map((o) => `
-    <li><a class="card" style="display:block;color:inherit;text-decoration:none" href="${routeUrl(o, base)}">
-      <div class="row"><span>${o.tomorrow ? '明日 ' : ''}${fmt(o.leave)} 出発 <small>${o.leaveAbs - nowAbs >= 0 ? 'あと' + G.dur(o.leaveAbs - nowAbs) : '出発時刻を過ぎています'}</small></span><span>${to} ${fmt(o.arrive)} 着</span></div>
-      <div class="sub">${o.legs.map(([st, t]) => `${st} ${t.split(' → ').pop()}`).join(' ・ ')}</div>
-    </a></li>`).join('');
+  const jrLink = (o, base) => (o.search ? `<a class="jr" href="${routeUrl(o, base)}">Yahoo!乗換案内で遅れを確認 ›</a>` : '');
+  // 候補1本分のカード。tag は「1本前」「1本後」などの見出し
+  const itemHtml = (o, base, nowAbs, to, tag) => {
+    const inner = `<div class="row"><span>${tag ? `<span class="tag">${tag}</span>` : ''}${o.tomorrow ? '明日 ' : ''}${fmt(o.leave)} 出発 <small>${o.leaveAbs - nowAbs >= 0 ? 'あと' + G.dur(o.leaveAbs - nowAbs) : '出発時刻を過ぎています'}</small></span><span>${to} ${fmt(o.arrive)} 着</span></div>
+      <div class="sub">${o.legs.map(([st, t]) => `${st} ${t.split(' → ').pop()}`).join(' ・ ')}</div>`;
+    return o.search ? `<li><a class="card" style="display:block;color:inherit;text-decoration:none" href="${routeUrl(o, base)}">${inner}</a></li>` : `<li><div class="card">${inner}</div></li>`;
+  };
+
+  /* ---- 現在地（手で選ぶ・GPS） ---- */
+  const HKEY = 'gl.homePos';
+  function distM(a, b) {
+    const R = 6371e3, r = Math.PI / 180;
+    const x = (b.lng - a.lng) * r * Math.cos(((a.lat + b.lat) / 2) * r), y = (b.lat - a.lat) * r;
+    return Math.sqrt(x * x + y * y) * R;
+  }
+  function pickLoc(loc) {
+    setLoc(loc);
+    if (loc === 'home') S.dir = 'school';
+    if (loc === 'univ') S.dir = 'home';
+    delete S.arriveDay; saveS();
+  }
+  // 位置はボタンを押したときに1回だけ取り、一番近い地点を選ぶ。位置そのものは保存しない（家の登録を除く）
+  function locate(registerHome) {
+    if (!navigator.geolocation) { G.toast('この端末では位置情報が使えません'); return; }
+    G.toast('現在地を調べています…');
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      if (registerHome) {
+        G.save(HKEY, { lat: Math.round(me.lat * 1e4) / 1e4, lng: Math.round(me.lng * 1e4) / 1e4 });
+        pickLoc('home'); render(); G.toast('この場所を「家」として登録しました（この端末だけに保存）'); return;
+      }
+      const home = G.load(HKEY, null);
+      const cands = ORDER.map((k) => ({ k, ...PLACES[k], ...(k === 'home' && home ? { lat: home.lat, lng: home.lng, r: 400 } : {}) })).filter((p) => p.lat);
+      const near = cands.map((p) => ({ ...p, d: distM(me, p) })).sort((a, b) => a.d - b.d);
+      const hit = near.find((p) => p.d <= p.r);
+      if (hit) { pickLoc(hit.k); render(); G.toast(`📍 ${hit.name}の近く（約${Math.round(hit.d / 10) * 10}m）`); }
+      else G.toast(`登録した地点の近くではありません（一番近いのは${near[0].name}・約${(near[0].d / 1000).toFixed(1)}km）。手で選んでください`);
+    }, (err) => {
+      G.toast(err.code === 1 ? '位置情報が許可されていません（ブラウザの設定から許可できます）' : '現在地を取得できませんでした');
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  }
+  function locCard() {
+    const l = getLoc();
+    const homeSet = !!G.load(HKEY, null);
+    return `<div class="card loc"><div class="hrow"><b style="flex:1">📍 現在地</b><button class="btn" data-gps="1">GPSで選ぶ</button></div>
+      <div class="days" style="margin-top:8px">${ORDER.map((k) => `<button data-loc="${k}" class="${l === k ? 'on' : ''}">${PLACES[k].short}</button>`).join('')}
+      <button data-loc="" class="${l ? '' : 'on'}">自動</button></div>
+      <div class="muted" style="margin-top:4px">${l ? `${PLACES[l].name}から出発（3時間たつと自動に戻ります）` : '自動：行きは家から、帰りは大学から'}
+      ${homeSet ? '' : '・<a href="#" data-homereg="1">今いる場所を「家」として登録</a>（GPSで家を見分けるため）'}</div></div>`;
+  }
 
   function render() {
     const v = G.$('v-commute');
     const now = new Date();
-    const from = S.dir === 'home' ? '大学' : '家';
+    const fromK = fromFor(S.dir);
     const to = S.dir === 'home' ? '家' : '大学';
-    let h = `<div class="seg"><button data-dir="school" class="${S.dir === 'school' ? 'on' : ''}">行き（家→大学）</button><button data-dir="home" class="${S.dir === 'home' ? 'on' : ''}">帰り（大学→家）</button></div>
+    let h = locCard();
+    h += `<div class="seg"><button data-dir="school" class="${S.dir === 'school' ? 'on' : ''}">行き（→大学）</button><button data-dir="home" class="${S.dir === 'home' ? 'on' : ''}">帰り（→家）</button></div>
       <div class="seg"><button data-mode="now" class="${S.mode === 'now' ? 'on' : ''}">今すぐ</button><button data-mode="arrive" class="${S.mode === 'arrive' ? 'on' : ''}">到着時刻を指定</button></div>`;
-    let plan, mainHtml;
+    if (!fromK) {
+      h += `<div class="card muted">${PLACES[getLoc()].name}にいるので、${S.dir === 'school' ? '行き' : '帰り'}の電車はありません。${S.dir === 'school' ? '帰り' : '行き'}に切り替えるか、現在地を変えてください。</div>`;
+      v.innerHTML = h; return;
+    }
+    const from = PLACES[fromK].name;
+    let plan, mainHtml, listTitle, listItems;
     if (S.mode === 'arrive') {
       const [th, tm] = getArrive().split(':').map(Number);
       const T = th * 60 + tm;
@@ -196,7 +323,7 @@
         return `<button class="${getArrive() === t ? 'on' : ''}" data-p="${t}">${p.n}限${mine.has(p.n) ? '•' : ''}<small>${fmt(p.s)}</small></button>`;
       }).join('')}</div>` : ''}
         <label class="arrive-row"><span>${to}に着きたい時刻</span><input type="time" id="lcArrive" value="${getArrive()}"></label></div>`;
-      plan = arrivePlan(S.dir, now, T, off);
+      plan = arrivePlan(S.dir, now, T, off, fromK);
       const dl = dayLabel(plan.base, now);
       const main = plan.opts[0];
       if (!main) {
@@ -208,10 +335,18 @@
           <div class="lc-count">${fmt(main.leave)}</div>
           <div class="lc-times"><div>までに${from}を出る　${left < 0 ? '<b class="late">もう間に合いません</b>' : `あと <span>${G.dur(left)}</span>`}</div>
           <div>${to}に <b>${fmt(main.arrive)}</b> 着</div></div>
-          ${legsHtml(main)}<a class="jr" href="${routeUrl(main, plan.base)}">Yahoo!乗換案内で遅れを確認 ›</a></section>`;
+          ${legsHtml(main)}${jrLink(main, plan.base)}</section>`;
+      }
+      // 前後1本ずつ
+      listTitle = '前後の電車';
+      listItems = '';
+      if (plan.before) listItems += itemHtml(plan.before, plan.base, plan.nowAbs, to, '1本前');
+      if (plan.after) {
+        const late = plan.after.arrive - T;
+        listItems += itemHtml(plan.after, plan.base, plan.nowAbs, to, `1本後${late > 0 ? `・<b class="late">${late}分遅れ</b>` : ''}`);
       }
     } else {
-      plan = nowPlan(S.dir, now);
+      plan = nowPlan(S.dir, now, fromK);
       const main = plan.opts[0];
       if (!main) mainHtml = '<section class="card lc-main"><p class="muted">候補がありません</p></section>';
       else {
@@ -219,15 +354,17 @@
         const mins = Math.floor(left), secs = Math.floor((left - mins) * 60);
         mainHtml = `<section class="card lc-main${left < 5 ? ' urgent' : ''}">
           <div class="label">${from}を出るまで</div>
-          <div class="lc-count">${left >= 60 ? `${Math.floor(mins / 60)}<small>時間</small>${mins % 60}` : mins}<small>分</small><span class="sec">${pad(secs)}秒</span></div>
+          <div class="lc-count">${left >= 60 ? `${Math.floor(mins / 60)}<small>時間</small>${mins % 60}` : mins}<small>分</small><span class="sec">${pad(Math.max(0, secs))}秒</span></div>
           <div class="lc-times"><div><span>${main.tomorrow ? '明日 ' : ''}${fmt(main.leave)}</span>に${from}を出る</div>
           <div>${to}に <b>${fmt(main.arrive)}</b> 着</div></div>
-          ${legsHtml(main)}<a class="jr" href="${routeUrl(main, plan.base)}">Yahoo!乗換案内で遅れを確認 ›</a></section>`;
+          ${legsHtml(main)}${jrLink(main, plan.base)}</section>`;
       }
+      listTitle = '次の候補';
+      listItems = plan.opts.slice(1).map((o) => itemHtml(o, plan.base, plan.nowAbs, to)).join('');
     }
     h += `<a class="btn" style="display:block;margin-bottom:10px;text-align:left" href="${infoLink}">運行情報（Yahoo!乗換案内）›</a>`;
     h += mainHtml;
-    h += `<div class="gh">${S.mode === 'arrive' ? 'もっと早く出る候補' : '次の候補'}</div><ul class="lc-list">${listHtml(plan.opts.slice(1), plan.base, plan.nowAbs, to)}</ul>`;
+    if (listItems) h += `<div class="gh">${listTitle}</div><ul class="lc-list">${listItems}</ul>`;
     h += `<div class="gh">移動時間の設定</div><div class="card">${Object.keys(CHOICES).map((k) => `<div class="set-row"><span>${k === 'walkUniv' ? '大学 ⇄ 南柏（徒歩）' : '荒川沖 ⇄ 家（自転車）'}</span>
       <div class="seg" style="margin:0">${CHOICES[k].map((x) => `<button class="${x === CFG[k] ? 'on' : ''}" data-k="${k}" data-v="${x}">${x}分</button>`).join('')}</div></div>`).join('')}
       <div class="set-row" style="margin:0"><span>2限の特例（2限に行くときは ${SPECIAL.from} ${fmt(SPECIAL.dep)} 発までの電車に乗る）</span>
@@ -238,7 +375,11 @@
   }
 
   function onClick(e) {
+    const ln = e.target.closest('[data-homereg]');
+    if (ln) { e.preventDefault(); locate(true); return; }
     const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.loc !== undefined) { pickLoc(b.dataset.loc || null); render(); return; }
+    if (b.dataset.gps) { locate(false); return; }
     if (b.dataset.dir) { S.dir = b.dataset.dir; delete S.arriveDay; }
     else if (b.dataset.mode) { S.mode = b.dataset.mode; delete S.arriveDay; }
     else if (b.dataset.p) { S.arrive[S.dir] = b.dataset.p; delete S.arriveDay; }
@@ -286,7 +427,7 @@
     return { dir: tr.dir, dep, o, base: plan.base, nowAbs };
   }
 
-  G.commute = { trip, tripStart, tripEnd, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
+  G.commute = { PLACES, getLoc, fromFor, trip, tripStart, tripEnd, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
   // 秒まで数えるので、表示中は1秒ごとに描き直す（入力中は止める）
   G.reg('commute', { title: '通学', render, tick: 1, skipTick: () => document.activeElement && document.activeElement.id === 'lcArrive' });
 })();

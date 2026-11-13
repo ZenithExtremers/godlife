@@ -192,3 +192,6 @@ label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .steps li.done::before{background:var(--sub)}
 .steps li.cur{font-weight:800}
 .steps li.cur::before{background:var(--ok);box-shadow:0 0 0 4px rgba(30,158,90,.25)}
+.lc-list .tag{display:inline-block;font-size:12px;font-weight:700;background:var(--soft);border-radius:6px;padding:1px 6px;margin-right:6px}
+.locchip{margin-left:8px;font-size:12px;font-weight:700;color:var(--ok)}
+.loc .days button{flex:1 0 auto}
