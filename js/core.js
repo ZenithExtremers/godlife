@@ -61,7 +61,7 @@
 
   // 画面の登録と切り替え（app.js が使う）
   // アプリのバージョン（更新のたびに上げる。sw.js の VERSION もそろえる）
-  G.VERSION = '1.17.0';
+  G.VERSION = '1.18.0';
   G.mods = {};
   G.reg = (name, mod) => { G.mods[name] = mod; };
   G.go = (tab) => { location.hash = tab; };

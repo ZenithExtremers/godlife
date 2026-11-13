@@ -102,13 +102,20 @@
     const w = G.weather.probIn(0, G.ymd(new Date()), new Date().getHours(), 23);
     G.$('glWx').textContent = w == null ? '' : `☂ 家の周り ${w}%（これから）${G.commute.rainy() ? '・雨モード' : ''}`;
   }
+  // 大学にまだ行っていない日だけ：今日は対面授業があり、1コマ目の前で、家（または自動）にいて、まだ家を出ていない
+  function glanceToday() {
+    const now = new Date(), cs = G.classes.status(now), loc = G.commute.getLoc();
+    if (!cs.first || G.minOfDay(now) >= cs.first.s) return false;
+    if (loc && loc !== 'home') return false;
+    return !G.commute.trip(now) && !G.commute.wentToday();
+  }
   function openGlance() {
-    if (!glanceOn()) return;
+    if (!glanceOn() || !glanceToday()) return;
     paintGlance(); G.$('glance').hidden = false;
     clearInterval(glTimer); glTimer = setInterval(paintGlance, 15000);
   }
   G.$('glance').onclick = () => { G.$('glance').hidden = true; clearInterval(glTimer); };
-  const paintGl = () => { G.$('mGlance').textContent = `⚡ 開いたときにシンプル表示：${glanceOn() ? 'オン' : 'オフ'}`; };
+  const paintGl = () => { G.$('mGlance').textContent = `⚡ シンプル表示（大学に行く日の出発前）：${glanceOn() ? 'オン' : 'オフ'}`; };
   G.$('mGlance').onclick = () => { G.save('gl.glance', !glanceOn()); paintGl(); };
   paintGl();
   G.$('mVer').textContent = `GOD Life バージョン ${G.VERSION}`;

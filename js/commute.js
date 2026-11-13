@@ -354,6 +354,7 @@
   function pickLoc(loc) {
     const prev = getLoc();
     setLoc(loc);
+    if (loc && loc !== 'home') markWent(); // 駅・車内・大学にいる＝もう家を出た
     if (loc === 'home') S.dir = 'school';
     if (loc === 'univ') S.dir = 'home';
     if (loc === 'train' && prev !== 'train') { S.prevLoc = prev; S.dir = guessDir(new Date()); }
@@ -465,6 +466,7 @@
   }
   // 「これに乗ってる」：その電車で移動中カードを始める
   function board(dir, dep) {
+    markWent();
     const old = G.load(TKEY, null);
     G.save(TKEY, { dir, t: Date.now(), train: Number(dep) });
     return old;
@@ -596,7 +598,11 @@
 
   /* ---- 「家を出た」「大学を出た」：出た時刻から乗れる電車をたどる ---- */
   const TKEY = 'gl.trip';
+  // 今日もう大学へ向かったか（シンプル表示を出すかどうかに使う）
+  const markWent = () => G.save('gl.went', G.ymd(new Date()));
+  const wentToday = () => G.load('gl.went', '') === G.ymd(new Date());
   function tripStart(dir) {
+    if (dir === 'school') markWent();
     const old = G.load(TKEY, null);
     G.save(TKEY, { dir, t: Date.now() });
     return old;
@@ -642,7 +648,7 @@
     return { dir: tr.dir, dep, o, base: plan.base, nowAbs, done, boarded: tr.train != null ? tr.train : null };
   }
 
-  G.commute = { rainMode: () => S.rain || 'auto', yahooUrl, rainy, HOLIDAYS, dir: () => S.dir, onboardList, board, flipDir, autoLocate, autoOn, PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
+  G.commute = { wentToday, rainMode: () => S.rain || 'auto', yahooUrl, rainy, HOLIDAYS, dir: () => S.dir, onboardList, board, flipDir, autoLocate, autoOn, PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
   // 秒まで数えるので、表示中は1秒ごとに描き直す（入力中は止める）
   G.reg('commute', { title: '通学', render, tick: 1, skipTick: () => document.activeElement && document.activeElement.id === 'lcArrive' });
 })();
