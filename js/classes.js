@@ -24,13 +24,17 @@
     const d = date.getDay();
     return G.PERIODS.map((p) => ({ ...p, c: get(d, p.n) })).filter((x) => x.c);
   }
-  // 今の授業と次の授業
+  // オンライン授業（大学に行かなくていいコマ）
+  const isOnline = (c) => !!(c && c.online);
+  const ONLINE_RE = /オンライン|遠隔|オンデマンド|zoom|teams|meet|web授業/i;
+  // 今の授業と次の授業。first/last は大学で受ける（対面の）授業だけで数える
   function status(now) {
     const min = G.minOfDay(now);
     const list = dayList(now);
+    const campus = list.filter((x) => !isOnline(x.c));
     const cur = list.find((x) => min >= x.s && min < x.e) || null;
     const next = list.find((x) => x.s > min) || null;
-    return { list, cur, next, first: list[0] || null, last: list[list.length - 1] || null };
+    return { list, campus, cur, next, first: campus[0] || null, last: campus[campus.length - 1] || null };
   }
 
   function render() {
@@ -49,7 +53,7 @@
         const c = a[`${d}-${p.n}`];
         const isNow = d === today && min >= p.s && min < p.e;
         h += c
-          ? `<button class="c has${isNow ? ' now' : ''}" style="background:${G.esc(c.color || COLORS[0])}" data-d="${d}" data-p="${p.n}"><b>${G.esc(c.name)}</b><small>${G.esc(c.room || '')}</small></button>`
+          ? `<button class="c has${isNow ? ' now' : ''}${isOnline(c) ? ' online' : ''}" style="background:${G.esc(c.color || COLORS[0])}" data-d="${d}" data-p="${p.n}"><b>${G.esc(c.name)}</b><small>${isOnline(c) ? '💻 オンライン' : G.esc(c.room || '')}</small></button>`
           : `<button class="c${isNow ? ' now' : ''}" data-d="${d}" data-p="${p.n}" aria-label="${G.WD[d]}${p.n}限を追加"></button>`;
       }
     }
@@ -81,14 +85,15 @@
 
   // 読み取った結果を確認・修正してから保存する
   function review(r) {
-    const rows = r.entries.map((e) => ({ ...e, on: true }));
+    const rows = r.entries.map((e) => ({ ...e, on: true, online: ONLINE_RE.test(e.room) }));
     const dayOpt = (d) => DAYS.map((x) => `<option value="${x}"${x === d ? ' selected' : ''}>${G.WD[x]}</option>`).join('');
     const perOpt = (p) => G.PERIODS.map((x) => `<option value="${x.n}"${x.n === p ? ' selected' : ''}>${x.n}限</option>`).join('');
     const rowHtml = (e, i) => `<div class="ocr-row" data-i="${i}">
         <label class="ocr-on"><input type="checkbox" data-f="on"${e.on ? ' checked' : ''}></label>
         <div class="ocr-f"><div class="sel"><select data-f="d">${dayOpt(e.d)}</select><select data-f="p">${perOpt(e.p)}</select></div>
         <input data-f="name" value="${G.esc(e.name)}" placeholder="授業名">
-        <div class="row2"><input data-f="room" value="${G.esc(e.room)}" placeholder="教室"><input data-f="teacher" value="${G.esc(e.teacher)}" placeholder="先生"></div></div></div>`;
+        <div class="row2"><input data-f="room" value="${G.esc(e.room)}" placeholder="教室"><input data-f="teacher" value="${G.esc(e.teacher)}" placeholder="先生"></div>
+        <label class="ocr-mode" style="margin:4px 0"><input type="checkbox" data-f="online"${e.online ? ' checked' : ''}> 💻 オンライン</label></div></div>`;
     const has = Object.keys(all()).length;
     G.openEditor(`<h3>読み取り結果（${rows.length}コマ）</h3>
       ${rows.length ? `<p>まちがっているところを直して、いらない行はチェックを外してください。${r.guessedRows ? '<br><b>⚠ 時限の数字が読み取れなかったので、位置から推測しています。時限をよく確認してください。</b>' : ''}</p>`
@@ -102,12 +107,12 @@
       const upd = (e) => {
         const el = e.target, f = el.dataset.f; if (!f) return;
         const i = Number(el.closest('[data-i]').dataset.i);
-        rows[i][f] = f === 'on' ? el.checked : (f === 'd' || f === 'p') ? Number(el.value) : el.value;
+        rows[i][f] = f === 'on' || f === 'online' ? el.checked : (f === 'd' || f === 'p') ? Number(el.value) : el.value;
       };
       box.addEventListener('input', upd);
       box.addEventListener('change', upd);
       root.querySelector('#oAdd').onclick = () => {
-        rows.push({ d: 1, p: 1, name: '', room: '', teacher: '', on: true });
+        rows.push({ d: 1, p: 1, name: '', room: '', teacher: '', on: true, online: false });
         box.insertAdjacentHTML('beforeend', rowHtml(rows[rows.length - 1], rows.length - 1));
       };
       root.querySelector('#oSave').onclick = () => {
@@ -122,7 +127,7 @@
         for (const e of use) {
           const name = e.name.trim();
           if (!colorOf[name]) colorOf[name] = COLORS[k++ % COLORS.length];
-          a[`${e.d}-${e.p}`] = { name, room: e.room.trim(), teacher: e.teacher.trim(), memo: '', color: colorOf[name] };
+          a[`${e.d}-${e.p}`] = { name, room: e.room.trim(), teacher: e.teacher.trim(), memo: '', color: colorOf[name], online: !!e.online };
         }
         G.save(KEY, a);
         G.closeEditor(); render();
@@ -144,6 +149,7 @@
       <datalist id="eNames">${names.map((n) => `<option value="${G.esc(n)}">`).join('')}</datalist>
       <div class="row2"><div><label class="f">教室</label><input id="eRoom" value="${G.esc(c.room || '')}" placeholder="例：か-301"></div>
       <div><label class="f">先生</label><input id="eTeacher" value="${G.esc(c.teacher || '')}"></div></div>
+      <label class="ocr-mode" style="color:var(--text);font-size:15px"><input type="checkbox" id="eOnline"${isOnline(c) ? ' checked' : ''}> 💻 オンライン授業（この授業の日は、次の対面の授業に合わせて家を出る）</label>
       <label class="f">色</label><div class="colors" id="eColors">${COLORS.map((x) => `<button style="background:${x}" data-c="${x}" class="${x === color ? 'on' : ''}" aria-label="色"></button>`).join('')}</div>
       <label class="f">メモ</label><input id="eMemo" value="${G.esc(c.memo || '')}" placeholder="例：教科書持参">
       <button class="btn pri full" id="eSave">保存</button>
@@ -155,6 +161,7 @@
         if (same) {
           root.querySelector('#eRoom').value ||= same.room || '';
           root.querySelector('#eTeacher').value ||= same.teacher || '';
+          root.querySelector('#eOnline').checked = isOnline(same);
           color = same.color || color; paint();
         }
       };
@@ -163,7 +170,7 @@
       root.querySelector('#eSave').onclick = () => {
         const name = nm.value.trim();
         if (!name) { put(d, p, null); } else {
-          put(d, p, { name, room: root.querySelector('#eRoom').value.trim(), teacher: root.querySelector('#eTeacher').value.trim(), memo: root.querySelector('#eMemo').value.trim(), color });
+          put(d, p, { name, room: root.querySelector('#eRoom').value.trim(), teacher: root.querySelector('#eTeacher').value.trim(), memo: root.querySelector('#eMemo').value.trim(), color, online: root.querySelector('#eOnline').checked });
         }
         G.closeEditor(); render();
       };
@@ -174,6 +181,6 @@
     });
   }
 
-  G.classes = { all, get, dayList, status, KEY };
+  G.classes = { all, get, dayList, status, isOnline, KEY };
   G.reg('class', { title: '時間割', render, tick: null });
 })();

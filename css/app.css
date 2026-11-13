@@ -177,3 +177,4 @@ label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .crow .t2{font-size:19px;font-weight:800;margin-top:1px}
 .crow .t3{font-size:13px;color:var(--sub);margin-top:1px}
 .crow .go{color:var(--sub);font-size:20px}
+.tt .c.online{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.18) 0 6px,transparent 6px 12px)}

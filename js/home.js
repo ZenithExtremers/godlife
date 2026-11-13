@@ -1,6 +1,7 @@
 // ホーム：今日の授業・家を出る時刻・課題・学食をひと目で
 (function () {
   const pfx = (s) => `${s.n}限 ${G.fmtMin(s.s)}`;
+  const where = (c) => (G.classes.isOnline(c) ? '💻 オンライン' + (c.teacher ? '・' + c.teacher : '') : [c.room, c.teacher].filter(Boolean).join('・'));
   const hhmm = (m) => `${G.pad(Math.floor(m / 60))}:${G.pad(m % 60)}`;
 
   function hero(now, cs) {
@@ -8,14 +9,14 @@
     if (cs.cur) {
       const x = cs.cur, pct = Math.min(100, ((min - x.s) / (x.e - x.s)) * 100);
       return `<div class="card hero"><div class="label">授業中・${x.n}限（${G.fmtMin(x.s)}–${G.fmtMin(x.e)}）</div>
-        <div class="big">${G.esc(x.c.name)}</div><div class="meta">${G.esc([x.c.room, x.c.teacher].filter(Boolean).join('・'))}　あと${G.dur(x.e - min)}で終わり</div>
+        <div class="big">${G.esc(x.c.name)}</div><div class="meta">${G.esc(where(x.c))}　あと${G.dur(x.e - min)}で終わり</div>
         <div class="bar"><i style="width:${pct}%"></i></div>
-        ${cs.next ? `<div class="meta" style="margin-top:8px">次：${pfx(cs.next)} ${G.esc(cs.next.c.name)}${cs.next.c.room ? '（' + G.esc(cs.next.c.room) + '）' : ''}</div>` : ''}</div>`;
+        ${cs.next ? `<div class="meta" style="margin-top:8px">次：${pfx(cs.next)} ${G.esc(cs.next.c.name)}${where(cs.next.c) ? '（' + G.esc(where(cs.next.c)) + '）' : ''}</div>` : ''}</div>`;
     }
     if (cs.next) {
       const x = cs.next;
       return `<div class="card hero"><div class="label">次の授業・あと${G.dur(x.s - min)}</div>
-        <div class="big">${pfx(x)}　${G.esc(x.c.name)}</div><div class="meta">${G.esc([x.c.room, x.c.teacher].filter(Boolean).join('・')) || '教室未登録'}${x.c.memo ? '　📌' + G.esc(x.c.memo) : ''}</div></div>`;
+        <div class="big">${pfx(x)}　${G.esc(x.c.name)}</div><div class="meta">${G.esc(where(x.c)) || '教室未登録'}${x.c.memo ? '　📌' + G.esc(x.c.memo) : ''}</div></div>`;
     }
     const tm = new Date(now); tm.setDate(tm.getDate() + 1);
     const tl = G.classes.dayList(tm);
@@ -30,9 +31,11 @@
     const min = G.minOfDay(now);
     for (let k = 0; k <= 7; k++) {
       const d = new Date(now); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + k);
+      // オンライン授業は家で受けるので、大学に行くのは最初の対面の授業から
       const list = G.classes.dayList(d);
-      if (!list.length || (k === 0 && min >= list[0].s)) continue;
-      return { k, date: d, first: list[0] };
+      const campus = list.filter((x) => !G.classes.isOnline(x.c));
+      if (!campus.length || (k === 0 && min >= campus[0].s)) continue;
+      return { k, date: d, first: campus[0], onlineBefore: list.filter((x) => G.classes.isOnline(x.c) && x.s < campus[0].s) };
     }
     return null;
   }
@@ -54,7 +57,13 @@
     const parts = [];
     if (left < 0) parts.push('⚠ もう間に合いません'); else if (left < 24 * 60) parts.push(`あと${G.dur(left)}`);
     parts.push(`大学 ${G.fmtMin(o.arrive)} 着`);
-    const sub = parts.join('・');
+    if (plan.special) parts.push('2限の特例');
+    let sub = parts.join('・');
+    if (nd.onlineBefore.length) {
+      const ob = nd.onlineBefore, lastOn = ob[ob.length - 1];
+      sub += `<br>💻 ${ob.map((x) => x.n + '限').join('・')}はオンライン（家で受けてから出発）`;
+      if (o.leave < lastOn.e) sub += `<br><span class="late">⚠ ${lastOn.n}限のオンライン授業（〜${G.fmtMin(lastOn.e)}）の途中で出発になります</span>`;
+    }
     return row(go, label, `${G.fmtMin(o.leave)} に家を出る`, sub, left < 0);
   }
 
@@ -65,8 +74,8 @@
     if (!o) return row(`G.commute.open('school','now')`, '今から行くなら', '候補がありません', '');
     let note = '';
     if (!o.tomorrow) {
-      const mine = cs.list.find((x) => x.s >= o.arrive);
-      const during = cs.list.find((x) => x.s < o.arrive && x.e > o.arrive);
+      const mine = cs.campus.find((x) => x.s >= o.arrive);
+      const during = cs.campus.find((x) => x.s < o.arrive && x.e > o.arrive);
       if (during) note = `${during.n}限（${G.esc(during.c.name)}）の途中に着く`;
       else if (mine) note = `${pfx(mine)}（${G.esc(mine.c.name)}）に間に合う`;
       else { const p = G.PERIODS.find((x) => x.s >= o.arrive); note = p ? `${p.n}限に間に合う` : '5限にも間に合いません'; }
@@ -122,7 +131,7 @@
     const min = G.minOfDay(now);
     return `<div class="gh">今日の授業<a href="#class">時間割 ›</a></div><div class="card"><ul class="today-list">${cs.list.map((x) => `
       <li class="${min >= x.e ? 'past' : min >= x.s ? 'now' : ''}"><div class="p">${x.n}限<small>${G.fmtMin(x.s)}</small></div>
-      <div class="n">${G.esc(x.c.name)}<small>${G.esc([x.c.room, x.c.teacher].filter(Boolean).join('・'))}</small></div></li>`).join('')}</ul></div>`;
+      <div class="n">${G.esc(x.c.name)}<small>${G.esc(where(x.c))}</small></div></li>`).join('')}</ul></div>`;
   }
 
   function render() {

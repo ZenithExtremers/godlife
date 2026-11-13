@@ -122,6 +122,10 @@
   }
   // 「到着時刻を指定」：T（分）までに着く候補を遅い順に。過ぎていれば翌日
   // dayOffset を渡すと「今日から何日後の T」に固定する（ホームで次の授業日を出すとき用）
+  // 特例：2限に行くときは、10:40ちょうどに着く電車ではなく荒川沖 9:14 発に乗る
+  const SPECIAL = { period: 2, from: '荒川沖', dep: 9 * 60 + 14 };
+  const specialOn = () => S.special2 !== false;
+  const isSpecialT = (dir, T) => dir === 'school' && specialOn() && T === G.PERIODS.find((p) => p.n === SPECIAL.period).s;
   function arrivePlan(dir, now, T, dayOffset) {
     const nowClock = G.minOfDay(now);
     const D = dayStart(now);
@@ -132,9 +136,10 @@
     const prev = new Date(D); prev.setDate(prev.getDate() - 1);
     const build = builder(dir);
     const opts = build(TIMETABLE[typeOf(prev)]).map((o) => shift(o, -1440)).concat(build(TIMETABLE[typeOf(D)]))
-      .filter((o) => o.arrive <= T).sort((a, b) => b.leave - a.leave).slice(0, 4);
+      .filter((o) => o.arrive <= T && (!isSpecialT(dir, T) || o.search.dep <= SPECIAL.dep))
+      .sort((a, b) => b.leave - a.leave).slice(0, 4);
     for (const o of opts) { o.leaveAbs = o.leave; o.tomorrow = isTomorrow && o.leave >= 0; }
-    return { opts, base: D, nowAbs, isTomorrow, type: typeOf(D) };
+    return { opts, base: D, nowAbs, isTomorrow, type: typeOf(D), special: isSpecialT(dir, T) };
   }
 
   /* ---- 画面 ---- */
@@ -170,7 +175,7 @@
       }
       // 行きは時限の開始時刻ボタン。その日に授業がある時限には印を付ける
       const target = dayStart(now); target.setDate(target.getDate() + (off != null ? off : T <= G.minOfDay(now) ? 1 : 0));
-      const mine = new Set(G.classes.dayList(target).map((x) => x.n));
+      const mine = new Set(G.classes.dayList(target).filter((x) => !G.classes.isOnline(x.c)).map((x) => x.n));
       h += `<div class="card">${S.dir === 'school' ? `<div class="periods">${G.PERIODS.map((p) => {
         const t = `${pad(Math.floor(p.s / 60))}:${pad(p.s % 60)}`;
         return `<button class="${getArrive() === t ? 'on' : ''}" data-p="${t}">${p.n}限${mine.has(p.n) ? '•' : ''}<small>${fmt(p.s)}</small></button>`;
@@ -184,7 +189,7 @@
       } else {
         const left = main.leave - plan.nowAbs;
         mainHtml = `<section class="card lc-main${left < 5 ? ' urgent' : ''}">
-          <div class="label">${dl}${fmt(T)}までに${to}に着くには</div>
+          <div class="label">${dl}${fmt(T)}までに${to}に着くには${plan.special ? `<br><b>2限の特例：${SPECIAL.from} ${fmt(SPECIAL.dep)} 発までの電車</b>` : ''}</div>
           <div class="lc-count">${fmt(main.leave)}</div>
           <div class="lc-times"><div>までに${from}を出る　${left < 0 ? '<b class="late">もう間に合いません</b>' : `あと <span>${G.dur(left)}</span>`}</div>
           <div>${to}に <b>${fmt(main.arrive)}</b> 着</div></div>
@@ -209,7 +214,9 @@
     h += mainHtml;
     h += `<div class="gh">${S.mode === 'arrive' ? 'もっと早く出る候補' : '次の候補'}</div><ul class="lc-list">${listHtml(plan.opts.slice(1), plan.base, plan.nowAbs, to)}</ul>`;
     h += `<div class="gh">移動時間の設定</div><div class="card">${Object.keys(CHOICES).map((k) => `<div class="set-row"><span>${k === 'walkUniv' ? '大学 ⇄ 南柏（徒歩）' : '荒川沖 ⇄ 家（自転車）'}</span>
-      <div class="seg" style="margin:0">${CHOICES[k].map((x) => `<button class="${x === CFG[k] ? 'on' : ''}" data-k="${k}" data-v="${x}">${x}分</button>`).join('')}</div></div>`).join('')}</div>`;
+      <div class="seg" style="margin:0">${CHOICES[k].map((x) => `<button class="${x === CFG[k] ? 'on' : ''}" data-k="${k}" data-v="${x}">${x}分</button>`).join('')}</div></div>`).join('')}
+      <div class="set-row" style="margin:0"><span>2限の特例（2限に行くときは ${SPECIAL.from} ${fmt(SPECIAL.dep)} 発までの電車に乗る）</span>
+      <div class="seg" style="margin:0"><button data-sp="1" class="${specialOn() ? 'on' : ''}">オン</button><button data-sp="0" class="${specialOn() ? '' : 'on'}">オフ</button></div></div></div>`;
     h += `<div class="foot"><button class="daytype" id="lcDay">${(S.dayMode === 'auto' ? '' : '手動：') + { wk: '平日', ho: '土休日' }[plan.type]}ダイヤ</button><br>
       タップで「自動→平日→土休日」を切り替え<br>時刻表どおりの表示です（遅延は反映されません）<br>出典：JR東日本 駅時刻表（南柏 2026年10月版／柏・荒川沖 2026年11月版）</div>`;
     v.innerHTML = h;
@@ -220,6 +227,7 @@
     if (b.dataset.dir) { S.dir = b.dataset.dir; delete S.arriveDay; }
     else if (b.dataset.mode) { S.mode = b.dataset.mode; delete S.arriveDay; }
     else if (b.dataset.p) { S.arrive[S.dir] = b.dataset.p; delete S.arriveDay; }
+    else if (b.dataset.sp) { S.special2 = b.dataset.sp === '1'; }
     else if (b.dataset.k) { CFG[b.dataset.k] = S[b.dataset.k] = Number(b.dataset.v); }
     else if (b.id === 'lcDay') { S.dayMode = { auto: 'wk', wk: 'ho', ho: 'auto' }[S.dayMode]; }
     else return;

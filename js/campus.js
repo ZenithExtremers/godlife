@@ -58,7 +58,7 @@
     const o = local().busy[slot] || {};
     for (const [id, b] of Object.entries(o)) { if (b) s.add(id); else s.delete(id); }
     const mine = G.classes.get(day, period); // 自分の授業がある教室は使用中
-    if (mine && mine.room) s.add(mine.room);
+    if (mine && mine.room && !G.classes.isOnline(mine)) s.add(mine.room);
     return s;
   }
   function defaultSlot() {
