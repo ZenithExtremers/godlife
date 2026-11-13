@@ -63,10 +63,11 @@
     home: { name: '家', short: '家' },
     ara: { name: '荒川沖駅', short: '荒川沖', lat: 36.0306, lng: 140.1742, r: 900 },
     kashiwa: { name: '柏駅', short: '柏', lat: 35.8623, lng: 139.9710, r: 700 },
+    train: { name: '電車内（荒川沖〜柏）', short: '車内' },
     mk: { name: '南柏駅', short: '南柏', lat: 35.8441, lng: 139.9540, r: 600 },
     univ: { name: '麗澤大学', short: '大学', lat: 35.8325, lng: 139.9560, r: 700 },
   };
-  const ORDER = ['home', 'ara', 'kashiwa', 'mk', 'univ'];
+  const ORDER = ['home', 'ara', 'train', 'kashiwa', 'mk', 'univ'];
   const LKEY = 'gl.loc';
   // 選んだ現在地は3時間で「自動」（行きは家、帰りは大学）に戻す
   function getLoc() {
@@ -89,6 +90,15 @@
   // 帰り：大学 → 南柏 → 柏（乗換）→ 荒川沖 → 家。from で途中駅から乗る
   function homeOptions(tt, from = 'univ') {
     const out = [];
+    if (from === 'train') { // 柏→荒川沖の電車に乗っている
+      for (const [kDep, type, dest, araArr] of tt.chuDown) out.push({
+        leave: kDep, arrive: araArr + CFG.bikeHome, onboard: [kDep, araArr],
+        search: { from: '柏', to: '荒川沖', dep: kDep },
+        legs: [['柏', fmt(kDep) + ' 発', `${type} ${dest}行（乗車中）`], ['荒川沖', fmt(araArr) + ' 着', '自転車 ' + CFG.bikeHome + '分']],
+        steps: [{ t: kDep, do: `${type} ${dest}行に乗っている` }, { t: araArr, do: `荒川沖 ${fmt(araArr)} 着 → 自転車で家へ（${CFG.bikeHome}分）` }],
+      });
+      return out;
+    }
     for (const [kDep, type, dest, araArr] of tt.chuDown) {
       const tail = [
         { t: kDep, do: `柏 ${fmt(kDep)} 発 ${type} ${dest}行に乗る` },
@@ -130,6 +140,22 @@
   // 行き：家 → 荒川沖 → 柏（乗換）→ 南柏 → 大学。from で途中駅から乗る
   function schoolOptions(tt, from = 'home') {
     const out = [];
+    if (from === 'train') { // 荒川沖→柏の電車に乗っている
+      for (const [araDep, type, dest, kArr] of tt.chuUp) {
+        const mk = tt.mkUp.find((u) => u - CFG.mkKashiwa >= kArr + CFG.transfer);
+        if (mk === undefined) continue;
+        out.push({
+          leave: araDep, arrive: mk + CFG.walkUniv, onboard: [araDep, kArr],
+          search: { from: '荒川沖', to: '南柏', dep: araDep },
+          legs: [['荒川沖', fmt(araDep) + ' 発', `${type} ${dest}行（乗車中）`], ['柏', `${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発`, '各駅停車'], ['南柏', fmt(mk) + ' 着', '徒歩 ' + CFG.walkUniv + '分']],
+          steps: [{ t: araDep, do: `${type} ${dest}行に乗っている` },
+            { t: kArr, do: `柏 ${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗り換え` },
+            { t: mk - CFG.mkKashiwa, do: `柏 ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗る` },
+            { t: mk, do: `南柏 ${fmt(mk)} 着 → 大学まで歩く（${CFG.walkUniv}分）` }],
+        });
+      }
+      return out;
+    }
     if (from === 'kashiwa') {
       for (const mk of tt.mkUp) {
         const kd = mk - CFG.mkKashiwa;
@@ -180,7 +206,7 @@
     list.sort((a, b) => a.leave - b.leave);
     return list.filter((o, i) => !list.slice(i + 1).some((x) => x.arrive <= o.arrive));
   }
-  const shift = (o, k) => ({ ...o, leave: o.leave + k, arrive: o.arrive + k, search: o.search && { ...o.search, dep: o.search.dep + k }, steps: o.steps.map((x) => ({ ...x, t: x.t + k })) });
+  const shift = (o, k) => ({ ...o, leave: o.leave + k, arrive: o.arrive + k, onboard: o.onboard && o.onboard.map((x) => x + k), search: o.search && { ...o.search, dep: o.search.dep + k }, steps: o.steps.map((x) => ({ ...x, t: x.t + k })) });
   const build = (dir, tt, from) => (dir === 'home' ? homeOptions(tt, from) : schoolOptions(tt, from));
 
   // 「今すぐ」：これから乗れる候補（深夜0〜3時は前日のダイヤ扱い）。from を省くと家／大学から
@@ -191,7 +217,11 @@
     const next = new Date(svc); next.setDate(next.getDate() + 1);
     let opts, before = null;
     if (moveOnly(dir, from)) opts = [moveOption(dir, Math.ceil(nowMin))];
-    else {
+    else if (from === 'train') {
+      // 今走っている電車（出発済みで、まだ着いていない）を時刻表から探す。遅れも見込んで到着後15分までは候補に残す
+      const run = build(dir, TIMETABLE[typeOf(svc)], from).filter((o) => o.onboard[0] <= nowMin + 1 && nowMin < o.onboard[1] + 15);
+      opts = run.length ? [run[run.length - 1]] : [];
+    } else {
       const today = build(dir, TIMETABLE[typeOf(svc)], from);
       opts = today.filter((o) => o.leave >= nowMin);
       if (opts.length < 4) opts = opts.concat(build(dir, TIMETABLE[typeOf(next)], from).map((o) => shift(o, 1440)));
@@ -215,6 +245,7 @@
   const specialOn = () => S.special2 !== false;
   const isSpecialT = (dir, T, from) => dir === 'school' && (from === 'home' || from === 'ara') && specialOn() && T === G.PERIODS.find((p) => p.n === SPECIAL.period).s;
   function arrivePlan(dir, now, T, dayOffset, from = defFrom(dir)) {
+    if (from === 'train') return { ...nowPlan(dir, now, from), before: null, after: null, isTomorrow: false, special: false };
     const nowClock = G.minOfDay(now);
     const D = dayStart(now);
     if (dayOffset != null) D.setDate(D.getDate() + dayOffset);
@@ -268,6 +299,14 @@
     const x = (b.lng - a.lng) * r * Math.cos(((a.lat + b.lat) / 2) * r), y = (b.lat - a.lat) * r;
     return Math.sqrt(x * x + y * y) * R;
   }
+  // 点 p と線分 a-b の距離（m）
+  function segDist(p, a, b) {
+    const r = Math.PI / 180, R = 6371e3, c = Math.cos(p.lat * r);
+    const X = (q) => (q.lng - p.lng) * r * c * R, Y = (q) => (q.lat - p.lat) * r * R;
+    const ax = X(a), ay = Y(a), bx = X(b), by = Y(b), dx = bx - ax, dy = by - ay;
+    const t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy)));
+    return Math.hypot(ax + t * dx, ay + t * dy);
+  }
   function pickLoc(loc) {
     setLoc(loc);
     if (loc === 'home') S.dir = 'school';
@@ -292,6 +331,14 @@
       const near = ORDER.map((k) => ({ k, ...PLACES[k], ...(mine[k] ? { lat: mine[k].lat, lng: mine[k].lng } : {}), r: k === 'home' ? 400 : PLACES[k].r }))
         .filter((p) => p.lat).map((p) => ({ ...p, d: distM(me, p) })).sort((a, b) => a.d - b.d);
       const best = near[0];
+      // 駅の近くでなければ、荒川沖〜柏の線路沿い（2.5km以内）なら「車内」
+      const A = { ...PLACES.ara, ...(mine.ara || {}) }, K = { ...PLACES.kashiwa, ...(mine.kashiwa || {}) };
+      const onLine = segDist(me, A, K);
+      if (!(best && best.d <= best.r + Math.min(acc, 1000)) && onLine <= 2500) {
+        pickLoc('train');
+        S.gpsMsg = `📍 荒川沖〜柏の線路沿い（約${km(onLine)}）なので「車内」を選びました（精度±${km(acc)}）`;
+        saveS(); G.toast(S.gpsMsg); done && done(); return;
+      }
       // GPSの誤差（屋内だと数百m〜1km）も見込んで判定し、3km以内なら一番近い地点を選ぶ
       if (best && (best.d <= best.r + Math.min(acc, 1000) || best.d <= 3000)) {
         pickLoc(best.k);
@@ -309,7 +356,7 @@
   function locChips(compact) {
     const l = getLoc();
     const mine = myPos();
-    const reg = l || 'home';
+    const reg = l && l !== 'train' ? l : 'home';
     return `<div class="locbox${compact ? ' compact' : ''}"><div class="days">
       <button data-gps="1" class="gps">📍GPS</button>${ORDER.map((k) => `<button data-loc="${k}" class="${l === k ? 'on' : ''}">${PLACES[k].short}</button>`).join('')}
       <button data-loc="" class="${l ? '' : 'on'}">自動</button></div>
@@ -342,7 +389,18 @@
     }
     const from = PLACES[fromK].name;
     let plan, mainHtml, listTitle, listItems;
-    if (S.mode === 'arrive') {
+    if (fromK === 'train') {
+      // 車内：今乗っている電車を時刻表から推定して、着く時刻を出す
+      plan = nowPlan(S.dir, now, 'train');
+      const main = plan.opts[0];
+      mainHtml = main ? `<section class="card lc-main">
+          <div class="label">いま乗っている電車（時刻表から推定）</div>
+          <div class="lc-count">${fmt(main.arrive)}<small>${to}着</small></div>
+          <div class="lc-times"><div>${to}まで あと <span>${G.dur(Math.max(0, main.arrive - plan.nowAbs))}</span></div></div>
+          ${legsHtml(main)}${jrLink(main, plan.base)}</section>`
+        : `<section class="card lc-main urgent"><div class="label">今走っている${S.dir === 'school' ? '荒川沖→柏' : '柏→荒川沖'}の電車が時刻表に見つかりません。向き（行き／帰り）を確かめるか、駅に着いたら現在地を変えてください</div></section>`;
+      listItems = '';
+    } else if (S.mode === 'arrive') {
       const [th, tm] = getArrive().split(':').map(Number);
       const T = th * 60 + tm;
       // ホームから「◯曜の1限」を開いたときは、その日に固定する
@@ -450,6 +508,13 @@
     return old;
   }
   const tripEnd = () => G.raw(TKEY, null);
+  // 移動中カードの手順をタップしたら、そこまで終わったことにする（もう一度タップで戻す）
+  function tripMark(i) {
+    const tr = G.load(TKEY, null); if (!tr) return;
+    tr.done = tr.done === i ? i - 1 : i;
+    tr.doneAt = Date.now(); // 次の手順が始まった時刻（これ以降の予定をずらす）
+    G.save(TKEY, tr);
+  }
   function trip(now) {
     const tr = G.load(TKEY, null);
     if (!tr) return null;
@@ -459,10 +524,11 @@
     const o = plan.opts[0];
     const nowAbs = plan.nowAbs + (now - dep) / 60000 + 1;
     if (!o || nowAbs > o.arrive + 30 || now - dep > 4 * 3600e3) { tripEnd(); return null; } // 着いて30分たったら自動で終わり
-    return { dir: tr.dir, dep, o, base: plan.base, nowAbs };
+    const doneAbs = tr.doneAt ? plan.nowAbs + (tr.doneAt - dep) / 60000 + 1 : null;
+    return { dir: tr.dir, dep, o, base: plan.base, nowAbs, done: tr.done == null ? -1 : tr.done, doneAbs };
   }
 
-  G.commute = { PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
+  G.commute = { PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
   // 秒まで数えるので、表示中は1秒ごとに描き直す（入力中は止める）
   G.reg('commute', { title: '通学', render, tick: 1, skipTick: () => document.activeElement && document.activeElement.id === 'lcArrive' });
 })();

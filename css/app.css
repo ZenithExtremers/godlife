@@ -202,3 +202,6 @@ label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .locbox.compact .days button{padding:6px 7px;font-size:12px}
 .loc .locbox{margin-top:8px}
 .toast span{white-space:normal;overflow:visible;line-height:1.5}
+.steps li{cursor:pointer;-webkit-user-select:none;user-select:none;border-radius:8px}
+.steps li:active{background:var(--soft)}
+.trip{-webkit-user-select:none;user-select:none}

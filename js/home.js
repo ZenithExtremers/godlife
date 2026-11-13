@@ -79,6 +79,25 @@
     return row(go, label, `${G.fmtMin(o.leave)} に${P.short}を出る`, sub, left < 0);
   }
 
+  // 車内：今乗っている電車（行き・帰りのうち時刻表で見つかった方）
+  function onboardRows(now, cs) {
+    const out = [];
+    for (const dir of ['school', 'home']) {
+      const plan = G.commute.nowPlan(dir, now, 'train');
+      const o = plan.opts[0]; if (!o) continue;
+      const to = dir === 'school' ? '大学' : '家';
+      let note = '';
+      if (dir === 'school') {
+        const during = cs.campus.find((x) => x.s < o.arrive && x.e > o.arrive);
+        const nx = cs.campus.find((x) => x.s >= o.arrive);
+        note = during ? `<br><span class="late">⚠ ${during.n}限（${G.esc(during.c.name)}）に${Math.round(o.arrive - during.s)}分遅れ</span>` : nx ? `<br>${pfx(nx)}（${G.esc(nx.c.name)}）に間に合う` : '';
+      }
+      out.push(row(`G.commute.open('${dir}','now')`, `乗っている電車（📍車内・${dir === 'school' ? '荒川沖→柏' : '柏→荒川沖'}）`,
+        `${to}に ${G.fmtMin(o.arrive)} 着`, `${o.legs[0][1]} ${G.esc(o.legs[0][2])}・あと${G.dur(Math.max(0, o.arrive - plan.nowAbs))}${note}`));
+    }
+    return out.length ? out : [row(`G.go('commute')`, '📍車内', '今走っている電車が見つかりません', '駅に着いたら現在地を変えてください')];
+  }
+
   // ② 今から行くなら
   function goNowRow(now, cs) {
     const from = G.commute.fromFor('school');
@@ -126,23 +145,31 @@
     if (!tr) return '';
     const { o, nowAbs: n } = tr, school = tr.dir === 'school';
     const to = school ? '大学' : '家';
-    // 最初の手順（駅まで移動）は出た時点で始まっているので、次にやることは2つ目から探す
-    let idx = o.steps.findIndex((x, i) => i > 0 && x.t > n);
-    const next = idx === -1 ? null : o.steps[idx];
-    const cur = idx === -1 ? o.steps.length - 1 : idx - 1;
+    // 手順の最後に「着く」を足す。今の手順は「時刻」と「タップで終わらせた所」の進んでいる方
+    const A0 = [...o.steps, { t: o.arrive, do: `${to}に着く` }];
+    // タップで終わらせた次の手順は、タップした時刻に始まったとみなし、それ以降の予定をずらす
+    const off = tr.done >= 0 && tr.doneAbs != null && A0[tr.done + 1] ? tr.doneAbs - A0[tr.done + 1].t : 0;
+    const A = A0.map((x, i) => (i >= tr.done + 1 ? { ...x, t: x.t + off } : x));
+    const arrive = A[A.length - 1].t;
+    const tIdx = A.findIndex((x, i) => i > 0 && x.t > n);
+    const timeCur = tIdx === -1 ? A.length - 1 : tIdx - 1;
+    const cur = Math.min(A.length - 1, Math.max(timeCur, tr.done + 1));
+    const next = A[cur + 1] || null;
     let note = '';
     if (school && !o.tomorrow) {
-      const during = cs.campus.find((x) => x.s < o.arrive && x.e > o.arrive);
-      const nextC = cs.campus.find((x) => x.s >= o.arrive);
-      if (during) note = `<span class="late">⚠ ${during.n}限（${G.esc(during.c.name)}）に${Math.round(o.arrive - during.s)}分遅れて着く</span>`;
-      else if (nextC) note = `${nextC.n}限（${G.esc(nextC.c.name)}）の${G.dur(nextC.s - o.arrive)}前に着く`;
+      const during = cs.campus.find((x) => x.s < arrive && x.e > arrive);
+      const nextC = cs.campus.find((x) => x.s >= arrive);
+      if (during) note = `<span class="late">⚠ ${during.n}限（${G.esc(during.c.name)}）に${Math.round(arrive - during.s)}分遅れて着く</span>`;
+      else if (nextC) note = `${nextC.n}限（${G.esc(nextC.c.name)}）の${G.dur(nextC.s - arrive)}前に着く`;
     }
-    const steps = o.steps.map((x, i) => `<li class="${i < cur ? 'done' : i === cur ? 'cur' : ''}"><b>${G.fmtMin(x.t)}</b><span>${G.esc(x.do)}</span></li>`).join('');
+    const steps = A.map((x, i) => `<li class="${i < cur ? 'done' : i === cur ? 'cur' : ''}" onclick="G.home.mark(${i}, ${A.length - 1})"><b>${G.fmtMin(x.t)}</b><span>${G.esc(x.do)}</span></li>`).join('');
     return `<div class="card trip"><div class="label">🚃 移動中（${school ? '家→大学' : '大学→家'}）・${tr.dep.getHours()}:${G.pad(tr.dep.getMinutes())} 出発</div>
-      <div class="muted" style="margin-top:6px">いま：${G.esc(o.steps[cur].do)}</div>
-      <div class="big">${next ? `あと${G.dur(Math.max(0, next.t - n))}` : n < o.arrive ? `あと${G.dur(o.arrive - n)}` : `まもなく${to}`}</div>
-      <div class="meta">${next ? '次：' + G.esc(next.do) : `${to}に ${G.fmtMin(o.arrive)} に着く予定`}</div>
-      <ol class="steps">${steps}<li class="${n >= o.arrive ? 'cur' : ''}"><b>${G.fmtMin(o.arrive)}</b><span>${to}に着く</span></li></ol>
+      <div class="muted" style="margin-top:6px">いま：${G.esc(A[cur].do)}</div>
+      <div class="big">${next ? (next.t - n > 0 ? `あと${G.dur(next.t - n)}` : 'まもなく') : `まもなく${to}`}</div>
+      <div class="meta">${next ? '次：' + G.esc(next.do) : `${to}に ${G.fmtMin(arrive)} に着く予定`}</div>
+      ${Math.round(off) ? `<div class="muted">予定より${Math.abs(Math.round(off))}分${off < 0 ? '早い' : '遅い'}ペース（${to}に ${G.fmtMin(arrive)} 着の見込み）</div>` : ''}
+      <ol class="steps">${steps}</ol>
+      <div class="muted">終わった手順をタップすると、そこまで進めます（もう一度タップで戻す）</div>
       ${note ? `<div class="meta">${note}</div>` : ''}
       <div class="row2" style="margin-top:10px"><button class="btn pri" onclick="G.commute.tripEnd();G.mods.home.render()">✓ 着いた</button>
       <a class="btn" href="${G.commute.routeUrl(o, tr.base)}">遅れを確認</a>
@@ -162,9 +189,11 @@
     // 家にいそうな時間（1コマ目の前・授業のない日の午前）は「行き」を上に
     const atHome = cs.first ? min < cs.first.s : min < 12 * 60;
     let rows = atHome ? [classRow(now), goNowRow(now, cs), homeRow(now, cs)] : [homeRow(now, cs), classRow(now), goNowRow(now, cs)];
+    const isTrain = G.commute.getLoc() === 'train';
+    if (isTrain) rows = onboardRows(now, cs);
     // 移動中は、その向きの行は出さない（移動中カードに出ている）
     const tr = G.commute.trip(now);
-    if (tr) rows = tr.dir === 'school' ? [homeRow(now, cs)] : [classRow(now), goNowRow(now, cs)];
+    if (tr) rows = isTrain ? [] : tr.dir === 'school' ? [homeRow(now, cs)] : [classRow(now), goNowRow(now, cs)];
     const btns = `<div class="row2 tripbtns"><button class="btn${atHome ? ' pri' : ''}" onclick="G.home.leave('school')">🚪 家を出た</button><button class="btn${atHome ? '' : ' pri'}" onclick="G.home.leave('home')">🏫 大学を出た</button></div>`;
     const loc = G.commute.getLoc();
     return `<div class="gh">🚃 通学${loc ? `<span class="locchip">📍${G.commute.PLACES[loc].name}</span>` : ''}<a href="#commute">時刻表 ›</a></div><div class="card crows">${G.commute.locChips(true)}${rows.filter(Boolean).join('')}${btns}</div>`;
@@ -202,7 +231,12 @@
     G.$('v-home').innerHTML = tripCard(now, cs) + hero(now, cs) + commuteTile(now, cs) + kadaiTile() + menuTile(now) + todayList(now, cs);
   }
 
-  G.home = { leave };
+  // 手順をタップ：最後（着く）なら到着で終わり、それ以外はそこまで終わったことにする
+  function mark(i, last) {
+    if (i === last) { G.commute.tripEnd(); render(); G.toast('おつかれさまでした！'); return; }
+    G.commute.tripMark(i); render();
+  }
+  G.home = { leave, mark };
   // 現在地ボタン（通学欄）
   G.$('v-home').addEventListener('click', (e) => G.commute.handleLoc(e, render));
   G.reg('home', { title: 'GOD Life', render, tick: 15 });
