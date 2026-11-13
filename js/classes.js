@@ -38,7 +38,7 @@
   }
 
   function render() {
-    const v = G.$('v-class');
+    const v = G.$('ttBox') || G.$('v-class'); // カレンダータブの中の「時間割」に描く
     const now = new Date();
     const today = now.getDay();
     const min = G.minOfDay(now);
@@ -182,5 +182,5 @@
   }
 
   G.classes = { all, get, dayList, status, isOnline, KEY };
-  G.reg('class', { title: '時間割', render, tick: null });
+  G.classes.renderTT = render; // 画面の登録はカレンダー（calendar.js）が行う
 })();

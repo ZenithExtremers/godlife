@@ -147,7 +147,7 @@
       if (G.cur === 'kadai') G.toast(navigator.onLine ? e.message : 'オフラインです。前回の内容を表示しています');
     }
     st.loading = false;
-    render(); G.mods.home && G.cur === 'home' && G.mods.home.render();
+    render(); if (G.cur === 'home' || G.cur === 'class') G.mods[G.cur].render(); // ホームとカレンダーにも締切を出す
   }
   async function start(pass) {
     try { st.data = await fetchData(pass); G.raw(KEY, pass); G.raw(CACHE, JSON.stringify(st.data)); render(); }

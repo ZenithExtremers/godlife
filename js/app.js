@@ -53,7 +53,7 @@
   G.$('mLogout').onclick = () => { sheet.classList.remove('show'); G.kadai.logout(); G.go('kadai'); };
 
   // バックアップ（時間割・通学設定・教室の追記・完了印）。合言葉は含めない
-  const BK = ['gl.classes', 'gl.classOpt', 'gl.commute', 'gl.roomsLocal', 'kadai-done', 'gl.theme', 'gl.placePos'];
+  const BK = ['gl.classes', 'gl.classOpt', 'gl.commute', 'gl.roomsLocal', 'kadai-done', 'gl.theme', 'gl.placePos', 'gl.events'];
   G.$('mBackup').onclick = () => {
     const o = {}; BK.forEach((k) => { const v = G.raw(k); if (v != null) o[k] = v; });
     const txt = 'GODLIFE1:' + btoa(unescape(encodeURIComponent(JSON.stringify(o))));
@@ -86,6 +86,7 @@
   function paintGps() { G.$('mGps').textContent = `📍 開いたときに現在地を取得：${G.commute.autoOn() ? 'オン' : 'オフ'}`; }
   G.$('mGps').onclick = () => { G.save('gl.autoGps', !G.commute.autoOn()); paintGps(); if (G.commute.autoOn()) G.commute.autoLocate(rerender); };
   paintGps();
+  G.$('mVer').textContent = `GOD Life バージョン ${G.VERSION}`;
 
   // 起動
   G.kadai.init();

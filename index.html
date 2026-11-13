@@ -34,7 +34,7 @@
 
 <nav class="tabbar" id="tabbar">
   <button data-tab="home"><i>🏠</i>ホーム</button>
-  <button data-tab="class"><i>🗓</i>時間割</button>
+  <button data-tab="class"><i>📅</i>カレンダー</button>
   <button data-tab="kadai"><i>📝</i>課題<b class="dot" id="kadaiDot" hidden></b></button>
   <button data-tab="commute"><i>🚃</i>通学</button>
   <button data-tab="campus"><i>🍛</i>学食・教室</button>
@@ -54,6 +54,7 @@
   <button class="btn" id="mLogout">課題の合言葉を入れ直す</button>
   <p>時間割・完了の印・設定はこの端末にだけ保存されます。課題は数時間おきに自動で更新されます。</p>
   <button class="btn" id="mClose">閉じる</button>
+  <p class="ver" id="mVer"></p>
 </div></div>
 
 <div class="sheet" id="editor"><div class="in" id="editorIn"></div></div>
@@ -65,6 +66,7 @@
 <script src="js/kadai.js"></script>
 <script src="js/commute.js"></script>
 <script src="js/campus.js"></script>
+<script src="js/calendar.js"></script>
 <script src="js/home.js"></script>
 <script src="js/app.js"></script>
 </body>

@@ -204,7 +204,7 @@
   function todayList(now, cs) {
     if (!cs.list.length) return '';
     const min = G.minOfDay(now);
-    return `<div class="gh">今日の授業<a href="#class">時間割 ›</a></div><div class="card"><ul class="today-list">${cs.list.map((x) => `
+    return `<div class="gh">今日の授業<a href="#class" onclick="G.calendar.view('tt')">時間割 ›</a></div><div class="card"><ul class="today-list">${cs.list.map((x) => `
       <li class="${min >= x.e ? 'past' : min >= x.s ? 'now' : ''}"><div class="p">${x.n}限<small>${G.fmtMin(x.s)}</small></div>
       <div class="n">${G.esc(x.c.name)}<small>${G.esc(where(x.c))}</small></div></li>`).join('')}</ul></div>`;
   }

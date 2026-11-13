@@ -5,7 +5,7 @@
 | タブ | 内容 | 元になったもの |
 |---|---|---|
 | ホーム | 今の授業・次の授業、家を出る時刻、課題、今日の学食 | — |
-| 時間割 | 月〜土 × 1〜5限。マスをタップするか、スクショから読み込んで登録（この端末に保存） | 新規 |
+| カレンダー | 月表示＋選んだ日の一覧。大学の行事（`data/events.json`）・祝日・課題の締切・自分の予定（毎週くり返し可）を表示。上の切り替えで時間割（月〜土 × 1〜5限、スクショから読み込みも可） | 新規 |
 | 課題 | 麗澤ポータル（UNIPA）の課題。GitHub Actions が自動で取得 | [ReiMind](https://github.com/ZenithExtremers/reimind) |
 | 通学 | 「今出れば間に合う」。大学⇄南柏⇄柏乗換⇄荒川沖⇄家 | [LASTCALL](https://github.com/ZenithExtremers/lastcall) |
 | 学食・教室 | 学食メニュー（`data/menu.json`）と空き教室検索（`data/rooms.json`） | 新規 |
@@ -65,9 +65,14 @@ ReiMind と同じく、ログインに失敗すると自動更新を止めます
 
 同じ `zenithextremers.github.io` で動くので、ReiMind の合言葉・完了の印と LASTCALL の徒歩・自転車の設定は、そのまま引き継がれます。
 
+## バージョン
+
+アプリのバージョンはメニュー（☰）の一番下に出ます。更新するときは `js/core.js` の `G.VERSION` と `sw.js` の `VERSION` をそろえて上げます。
+
 ## データの更新
 
 - **学食**：`data/menu.json` の `days` に、`"2026-11-16": [{"name": "カレー", "price": 400}]` の形で入れる（`regular` は定番メニュー。`note` と `kcal` も書けます）
+- **大学の行事**：`data/events.json` の `events` に `{"date": "2026-12-24", "end": "2027-01-06", "title": "冬季休業", "kind": "休業"}` の形で入れる（`end` は期間のときだけ。`kind` が「休講」「休業」などの日はカレンダーで色が付きます）
 - **空き教室**：`data/rooms.json` の `rooms` に教室（`{"id": "か-301", "building": "かえで館", "cap": 40}`）を入れ、`busy` に `"曜日-時限"`（1=月）ごとの使用中の教室を入れる。
   アプリの「編集」で端末上で直してから「rooms.json の形でコピー」して貼り付けることもできます
 - **電車の時刻表**：ダイヤ改正のときに `data/trains.js` を LASTCALL と同じ手順で作り直し、`sw.js` の `VERSION` を上げる

@@ -60,6 +60,8 @@
   G.closeEditor = () => G.$('editor').classList.remove('show');
 
   // 画面の登録と切り替え（app.js が使う）
+  // アプリのバージョン（更新のたびに上げる。sw.js の VERSION もそろえる）
+  G.VERSION = '1.15.0';
   G.mods = {};
   G.reg = (name, mod) => { G.mods[name] = mod; };
   G.go = (tab) => { location.hash = tab; };

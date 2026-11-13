@@ -217,3 +217,33 @@ label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .onb.first{border:2px solid var(--ok)}
 .onb-wrap{padding-bottom:6px}
 .onb-wrap>.btn,.onb+.btn,#v-commute [data-flip]{display:block;width:100%;margin:4px 0 10px;padding:10px}
+/* カレンダー */
+.cal{padding:10px}
+.cal-head{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.cal-head b{flex:1;text-align:center;font-size:17px}
+.cal-head .btn{padding:6px 12px;font-size:15px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-wd{text-align:center;font-size:11px;color:var(--sub);font-weight:700;padding:2px 0}
+.cal-wd.sun,.cal-d.sun span{color:var(--over)}
+.cal-wd.sat,.cal-d.sat span{color:#2f6fd6}
+.cal-d{border:0;background:none;color:var(--text);border-radius:10px;padding:5px 0 3px;min-height:46px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;font-size:15px}
+.cal-d.out{opacity:.35}
+.cal-d.off{background:var(--soft)}
+.cal-d.today span{background:var(--main);color:#fff!important;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:700}
+.cal-d.sel{outline:2px solid var(--accent);outline-offset:-2px}
+.cal-d em{display:flex;gap:2px;height:6px}
+.cal-d em i,.cal-legend i{display:inline-block;width:6px;height:6px;border-radius:50%}
+.dot-u{background:#8e44ad}.dot-k{background:var(--over)}.dot-m{background:var(--main)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .dot-m{background:#7fc4e0}}
+:root[data-theme=dark] .dot-m{background:#7fc4e0}
+.cal-legend{display:flex;gap:12px;justify-content:center;font-size:11px;color:var(--sub);margin-top:6px}
+.cal-legend span{display:flex;align-items:center;gap:4px}
+.cal-list{padding:4px 14px}
+.ci{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line);cursor:pointer}
+.ci:first-child{border-top:0}
+.ci .tag{flex:none;font-size:11px;font-weight:700;border-radius:6px;padding:3px 6px;color:#fff;min-width:56px;text-align:center}
+.ci .tag.u{background:#8e44ad}.ci .tag.k{background:var(--over)}.ci .tag.m{background:var(--main)}
+.ci .ct{flex:1;min-width:0}
+.ci .ct b{display:block;font-size:15px}
+.ci .ct small{display:block;color:var(--sub);font-size:12px;margin-top:2px}
+.ver{text-align:center;font-size:12px;color:var(--sub);margin:12px 0 0}

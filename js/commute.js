@@ -595,7 +595,7 @@
     return { dir: tr.dir, dep, o, base: plan.base, nowAbs, done, boarded: tr.train != null ? tr.train : null };
   }
 
-  G.commute = { dir: () => S.dir, onboardList, board, flipDir, autoLocate, autoOn, PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
+  G.commute = { HOLIDAYS, dir: () => S.dir, onboardList, board, flipDir, autoLocate, autoOn, PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
   // 秒まで数えるので、表示中は1秒ごとに描き直す（入力中は止める）
   G.reg('commute', { title: '通学', render, tick: 1, skipTick: () => document.activeElement && document.activeElement.id === 'lcArrive' });
 })();
