@@ -220,7 +220,7 @@
     else if (from === 'train') {
       // 今走っている電車（出発済みで、まだ着いていない）を時刻表から探す。遅れも見込んで到着後15分までは候補に残す
       const run = build(dir, TIMETABLE[typeOf(svc)], from).filter((o) => o.onboard[0] <= nowMin + 1 && nowMin < o.onboard[1] + 15);
-      opts = run.length ? [run[run.length - 1]] : [];
+      opts = run.reverse(); // 出発が新しい順（たいていは一番新しく出た電車に乗っている）
     } else {
       const today = build(dir, TIMETABLE[typeOf(svc)], from);
       opts = today.filter((o) => o.leave >= nowMin);
@@ -308,11 +308,26 @@
     return Math.hypot(ax + t * dx, ay + t * dy);
   }
   function pickLoc(loc) {
+    const prev = getLoc();
     setLoc(loc);
     if (loc === 'home') S.dir = 'school';
     if (loc === 'univ') S.dir = 'home';
+    if (loc === 'train' && prev !== 'train') { S.prevLoc = prev; S.dir = guessDir(new Date()); }
     delete S.arriveDay; saveS();
   }
+  // 車内のとき、行きか帰りかを推定する
+  function guessDir(now) {
+    const tr = G.load(TKEY, null);
+    if (tr) return tr.dir; // 移動中ならその向き
+    const p = S.prevLoc; // 車内になる直前にいた場所
+    if (p === 'home' || p === 'ara') return 'school';
+    if (p === 'kashiwa' || p === 'mk' || p === 'univ') return 'home';
+    const st = G.classes.status(now), min = G.minOfDay(now); // 時間割：最初の対面授業の前なら行き
+    if (st.first) return min < st.first.s ? 'school' : 'home';
+    return min < 12 * 60 ? 'school' : 'home';
+  }
+  // 行き・帰りを入れ替える（車内の推定が違っていたとき）
+  function flipDir() { S.dir = S.dir === 'school' ? 'home' : 'school'; saveS(); }
   const km = (d) => (d < 1000 ? `${Math.round(d / 10) * 10}m` : `${(d / 1000).toFixed(1)}km`);
   // 位置はボタンを押したときに1回だけ取り、一番近い地点を選ぶ。位置そのものは保存しない（登録したときを除く）
   // silent：アプリを開いたときの自動取得。場所が変わったときだけ知らせる
@@ -383,6 +398,34 @@
   }
   const locCard = () => `<div class="card loc"><b>📍 現在地</b>${locChips(false)}</div>`;
 
+  // 車内：今走っている電車の候補を並べる（「これに乗ってる」で移動中カードを始める）
+  function onboardList(dir, now, big) {
+    const plan = nowPlan(dir, now, 'train');
+    const to = dir === 'school' ? '大学' : '家';
+    const flip = `<button class="btn" data-flip="1">↔ ${dir === 'school' ? '帰り（柏→荒川沖）' : '行き（荒川沖→柏）'}の電車を見る</button>`;
+    if (!plan.opts.length) return `<div class="card muted">今走っている${dir === 'school' ? '荒川沖→柏' : '柏→荒川沖'}の電車が時刻表に見つかりません。${flip}</div>`;
+    const st = G.classes.status(now);
+    return plan.opts.map((o, i) => {
+      const [dep, arr] = o.onboard, n = plan.nowAbs;
+      const pos = n < arr ? `あと${G.dur(Math.max(1, arr - n))}で${dir === 'school' ? '柏' : '荒川沖'}` : `${dir === 'school' ? '柏' : '荒川沖'}に着いている時刻`;
+      let note = '';
+      if (dir === 'school') {
+        const during = st.campus.find((x) => x.s < o.arrive && x.e > o.arrive), nx = st.campus.find((x) => x.s >= o.arrive);
+        note = during ? `<span class="late">⚠ ${during.n}限に${Math.round(o.arrive - during.s)}分遅れ</span>` : nx ? `${nx.n}限（${G.esc(nx.c.name)}）に間に合う` : '';
+      }
+      return `<div class="card onb${i === 0 ? ' first' : ''}"><div class="row"><b>${G.esc(o.legs[0][1])} ${G.esc(o.legs[0][2].replace('（乗車中）', ''))}</b></div>
+        <div class="${big && i === 0 ? 'onb-big' : 'onb-mid'}">${to}に ${fmt(o.arrive)} 着</div>
+        <div class="muted">${pos}${note ? '・' + note : ''}</div>
+        <button class="btn pri" data-board="${dir}:${dep}">🚃 これに乗ってる</button></div>`;
+    }).join('') + flip;
+  }
+  // 「これに乗ってる」：その電車で移動中カードを始める
+  function board(dir, dep) {
+    const old = G.load(TKEY, null);
+    G.save(TKEY, { dir, t: Date.now(), train: Number(dep) });
+    return old;
+  }
+
   function render() {
     const v = G.$('v-commute');
     const now = new Date();
@@ -400,13 +443,7 @@
     if (fromK === 'train') {
       // 車内：今乗っている電車を時刻表から推定して、着く時刻を出す
       plan = nowPlan(S.dir, now, 'train');
-      const main = plan.opts[0];
-      mainHtml = main ? `<section class="card lc-main">
-          <div class="label">いま乗っている電車（時刻表から推定）</div>
-          <div class="lc-count">${fmt(main.arrive)}<small>${to}着</small></div>
-          <div class="lc-times"><div>${to}まで あと <span>${G.dur(Math.max(0, main.arrive - plan.nowAbs))}</span></div></div>
-          ${legsHtml(main)}${jrLink(main, plan.base)}</section>`
-        : `<section class="card lc-main urgent"><div class="label">今走っている${S.dir === 'school' ? '荒川沖→柏' : '柏→荒川沖'}の電車が時刻表に見つかりません。向き（行き／帰り）を確かめるか、駅に着いたら現在地を変えてください</div></section>`;
+      mainHtml = `<div class="gh">乗っている電車の候補（${S.dir === 'school' ? '行き・荒川沖→柏' : '帰り・柏→荒川沖'}）</div>` + onboardList(S.dir, now, true);
       listItems = '';
     } else if (S.mode === 'arrive') {
       const [th, tm] = getArrive().split(':').map(Number);
@@ -481,6 +518,8 @@
   function onClick(e) {
     if (handleLoc(e, render)) return;
     const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.flip) { flipDir(); render(); return; }
+    if (b.dataset.board) { const [d, t] = b.dataset.board.split(':'); board(d, t); G.go('home'); G.toast('移動中カードを始めました'); return; }
     if (b.dataset.dir) { S.dir = b.dataset.dir; delete S.arriveDay; }
     else if (b.dataset.mode) { S.mode = b.dataset.mode; delete S.arriveDay; }
     else if (b.dataset.p) { S.arrive[S.dir] = b.dataset.p; delete S.arriveDay; }
@@ -533,8 +572,13 @@
     if (!tr) return null;
     const dep = new Date(tr.t);
     // 出た時刻の1分前までに出ていれば乗れる電車を探す（ボタンを押すのが少し遅れても大丈夫なように）
-    const plan = nowPlan(tr.dir, new Date(tr.t - 60e3));
+    let plan = nowPlan(tr.dir, new Date(tr.t - 60e3));
     let o = plan.opts[0], done = -1;
+    if (tr.train != null) { // 「これに乗ってる」で選んだ電車
+      plan = nowPlan(tr.dir, new Date(tr.t), 'train');
+      o = plan.opts.find((x) => x.onboard[0] === tr.train) || plan.opts[0];
+      plan = { ...plan, nowAbs: plan.nowAbs - 1 }; // 下の nowAbs 計算（押した時刻の1分前から数える）と合わせる
+    }
     const nowAbs = plan.nowAbs + (now - dep) / 60000 + 1;
     const m = tr.marks && tr.marks[tr.marks.length - 1];
     if (m) {
@@ -548,10 +592,10 @@
       }
     }
     if (!o || nowAbs > o.arrive + 30 || now - dep > 4 * 3600e3) { tripEnd(); return null; } // 着いて30分たったら自動で終わり
-    return { dir: tr.dir, dep, o, base: plan.base, nowAbs, done };
+    return { dir: tr.dir, dep, o, base: plan.base, nowAbs, done, boarded: tr.train != null ? tr.train : null };
   }
 
-  G.commute = { autoLocate, autoOn, PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
+  G.commute = { dir: () => S.dir, onboardList, board, flipDir, autoLocate, autoOn, PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
   // 秒まで数えるので、表示中は1秒ごとに描き直す（入力中は止める）
   G.reg('commute', { title: '通学', render, tick: 1, skipTick: () => document.activeElement && document.activeElement.id === 'lcArrive' });
 })();

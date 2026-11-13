@@ -209,3 +209,11 @@ label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .steps li{cursor:pointer;-webkit-user-select:none;user-select:none;border-radius:8px}
 .steps li:active{background:var(--soft)}
 .trip{-webkit-user-select:none;user-select:none}
+.onb{margin:0 0 8px;padding:12px}
+.onb .row{font-size:14px}
+.onb-big{font-size:34px;font-weight:800;color:var(--ok);margin:2px 0}
+.onb-mid{font-size:20px;font-weight:800;margin:2px 0}
+.onb .btn{margin-top:8px;width:100%;padding:10px}
+.onb.first{border:2px solid var(--ok)}
+.onb-wrap{padding-bottom:6px}
+.onb-wrap>.btn,.onb+.btn,#v-commute [data-flip]{display:block;width:100%;margin:4px 0 10px;padding:10px}

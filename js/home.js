@@ -80,22 +80,10 @@
   }
 
   // 車内：今乗っている電車（行き・帰りのうち時刻表で見つかった方）
-  function onboardRows(now, cs) {
-    const out = [];
-    for (const dir of ['school', 'home']) {
-      const plan = G.commute.nowPlan(dir, now, 'train');
-      const o = plan.opts[0]; if (!o) continue;
-      const to = dir === 'school' ? '大学' : '家';
-      let note = '';
-      if (dir === 'school') {
-        const during = cs.campus.find((x) => x.s < o.arrive && x.e > o.arrive);
-        const nx = cs.campus.find((x) => x.s >= o.arrive);
-        note = during ? `<br><span class="late">⚠ ${during.n}限（${G.esc(during.c.name)}）に${Math.round(o.arrive - during.s)}分遅れ</span>` : nx ? `<br>${pfx(nx)}（${G.esc(nx.c.name)}）に間に合う` : '';
-      }
-      out.push(row(`G.commute.open('${dir}','now')`, `乗っている電車（📍車内・${dir === 'school' ? '荒川沖→柏' : '柏→荒川沖'}）`,
-        `${to}に ${G.fmtMin(o.arrive)} 着`, `${o.legs[0][1]} ${G.esc(o.legs[0][2])}・あと${G.dur(Math.max(0, o.arrive - plan.nowAbs))}${note}`));
-    }
-    return out.length ? out : [row(`G.go('commute')`, '📍車内', '今走っている電車が見つかりません', '駅に着いたら現在地を変えてください')];
+  // 車内：乗っている電車の候補（行き・帰りは推定。違えば「逆向き」で切り替え）
+  function onboardRows(now) {
+    const dir = G.commute.dir();
+    return [`<div class="onb-wrap"><div class="t1 muted" style="margin:8px 0 4px">乗っている電車の候補（${dir === 'school' ? '行き・荒川沖→柏' : '帰り・柏→荒川沖'}）</div>${G.commute.onboardList(dir, now, false)}</div>`];
   }
 
   // ② 今から行くなら
@@ -160,7 +148,7 @@
       else if (nextC) note = `${nextC.n}限（${G.esc(nextC.c.name)}）の${G.dur(nextC.s - arrive)}前に着く`;
     }
     const steps = A.map((x, i) => `<li class="${i < cur ? 'done' : i === cur ? 'cur' : ''}" onclick="G.home.mark(${i}, ${A.length - 1})"><b>${G.fmtMin(x.t)}</b><span>${G.esc(x.do)}</span></li>`).join('');
-    return `<div class="card trip"><div class="label">🚃 移動中（${school ? '家→大学' : '大学→家'}）・${tr.dep.getHours()}:${G.pad(tr.dep.getMinutes())} 出発</div>
+    return `<div class="card trip"><div class="label">🚃 移動中（${school ? '家→大学' : '大学→家'}）・${tr.boarded != null ? `${G.fmtMin(tr.boarded)} 発に乗車` : `${tr.dep.getHours()}:${G.pad(tr.dep.getMinutes())} 出発`}</div>
       <div class="muted" style="margin-top:6px">いま：${G.esc(A[cur].do)}</div>
       <div class="big">${next ? (next.t - n > 0 ? `あと${G.dur(next.t - n)}` : 'まもなく') : `まもなく${to}`}</div>
       <div class="meta">${next ? '次：' + G.esc(next.do) : `${to}に ${G.fmtMin(arrive)} に着く予定`}</div>
@@ -186,11 +174,11 @@
     const atHome = cs.first ? min < cs.first.s : min < 12 * 60;
     let rows = atHome ? [classRow(now), goNowRow(now, cs), homeRow(now, cs)] : [homeRow(now, cs), classRow(now), goNowRow(now, cs)];
     const isTrain = G.commute.getLoc() === 'train';
-    if (isTrain) rows = onboardRows(now, cs);
+    if (isTrain) rows = onboardRows(now);
     // 移動中は、その向きの行は出さない（移動中カードに出ている）
     const tr = G.commute.trip(now);
     if (tr) rows = isTrain ? [] : tr.dir === 'school' ? [homeRow(now, cs)] : [classRow(now), goNowRow(now, cs)];
-    const btns = `<div class="row2 tripbtns"><button class="btn${atHome ? ' pri' : ''}" onclick="G.home.leave('school')">🚪 家を出た</button><button class="btn${atHome ? '' : ' pri'}" onclick="G.home.leave('home')">🏫 大学を出た</button></div>`;
+    const btns = isTrain ? '' : `<div class="row2 tripbtns"><button class="btn${atHome ? ' pri' : ''}" onclick="G.home.leave('school')">🚪 家を出た</button><button class="btn${atHome ? '' : ' pri'}" onclick="G.home.leave('home')">🏫 大学を出た</button></div>`;
     const loc = G.commute.getLoc();
     return `<div class="gh">🚃 通学${loc ? `<span class="locchip">📍${G.commute.PLACES[loc].name}</span>` : ''}<a href="#commute">時刻表 ›</a></div><div class="card crows">${G.commute.locChips(true)}${rows.filter(Boolean).join('')}${btns}</div>`;
   }
@@ -234,6 +222,11 @@
   }
   G.home = { leave, mark };
   // 現在地ボタン（通学欄）
-  G.$('v-home').addEventListener('click', (e) => G.commute.handleLoc(e, render));
+  G.$('v-home').addEventListener('click', (e) => {
+    if (G.commute.handleLoc(e, render)) return;
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.flip) { G.commute.flipDir(); render(); }
+    if (b.dataset.board) { const [d, t] = b.dataset.board.split(':'); G.commute.board(d, t); render(); window.scrollTo(0, 0); G.toast('移動中カードを始めました'); }
+  });
   G.reg('home', { title: 'GOD Life', render, tick: 15 });
 })();
