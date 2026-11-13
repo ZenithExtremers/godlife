@@ -121,10 +121,12 @@
     return { opts, base: svc, nowAbs: nowMin, type: typeOf(svc) };
   }
   // 「到着時刻を指定」：T（分）までに着く候補を遅い順に。過ぎていれば翌日
-  function arrivePlan(dir, now, T) {
+  // dayOffset を渡すと「今日から何日後の T」に固定する（ホームで次の授業日を出すとき用）
+  function arrivePlan(dir, now, T, dayOffset) {
     const nowClock = G.minOfDay(now);
     const D = dayStart(now);
-    if (T <= nowClock) D.setDate(D.getDate() + 1);
+    if (dayOffset != null) D.setDate(D.getDate() + dayOffset);
+    else if (T <= nowClock) D.setDate(D.getDate() + 1);
     const isTomorrow = ymd(D) !== ymd(now);
     const nowAbs = (now - D) / 60000;
     const prev = new Date(D); prev.setDate(prev.getDate() - 1);
@@ -136,6 +138,11 @@
   }
 
   /* ---- 画面 ---- */
+  // 今日なら空、明日なら「明日 」、それより先なら「11/16(月) 」
+  function dayLabel(D, now) {
+    const k = Math.round((dayStart(D) - dayStart(now)) / 864e5);
+    return k <= 0 ? '' : k === 1 ? '明日 ' : `${D.getMonth() + 1}/${D.getDate()}(${G.WD[D.getDay()]}) `;
+  }
   const getArrive = () => S.arrive[S.dir] || (S.dir === 'school' ? '08:50' : '18:00');
   const legsHtml = (o) => `<ol class="legs">${o.legs.map(([st, t, how]) => `<li><b>${st}</b><span>${t}</span><em>${how}</em></li>`).join('')}</ol>`;
   const listHtml = (opts, base, nowAbs, to) => opts.map((o) => `
@@ -155,22 +162,29 @@
     if (S.mode === 'arrive') {
       const [th, tm] = getArrive().split(':').map(Number);
       const T = th * 60 + tm;
+      // ホームから「◯曜の1限」を開いたときは、その日に固定する
+      let off = null;
+      if (S.arriveDay) {
+        const k = Math.round((new Date(S.arriveDay + 'T00:00:00') - dayStart(now)) / 864e5);
+        if (k >= 0 && !(k === 0 && T <= G.minOfDay(now))) off = k; else delete S.arriveDay;
+      }
       // 行きは時限の開始時刻ボタン。その日に授業がある時限には印を付ける
-      const target = new Date(now); if (T <= G.minOfDay(now)) target.setDate(target.getDate() + 1);
+      const target = dayStart(now); target.setDate(target.getDate() + (off != null ? off : T <= G.minOfDay(now) ? 1 : 0));
       const mine = new Set(G.classes.dayList(target).map((x) => x.n));
       h += `<div class="card">${S.dir === 'school' ? `<div class="periods">${G.PERIODS.map((p) => {
         const t = `${pad(Math.floor(p.s / 60))}:${pad(p.s % 60)}`;
         return `<button class="${getArrive() === t ? 'on' : ''}" data-p="${t}">${p.n}限${mine.has(p.n) ? '•' : ''}<small>${fmt(p.s)}</small></button>`;
       }).join('')}</div>` : ''}
         <label class="arrive-row"><span>${to}に着きたい時刻</span><input type="time" id="lcArrive" value="${getArrive()}"></label></div>`;
-      plan = arrivePlan(S.dir, now, T);
+      plan = arrivePlan(S.dir, now, T, off);
+      const dl = dayLabel(plan.base, now);
       const main = plan.opts[0];
       if (!main) {
-        mainHtml = `<section class="card lc-main urgent"><div class="label">${plan.isTomorrow ? '明日 ' : ''}${fmt(T)}までに${to}に着く電車はありません</div></section>`;
+        mainHtml = `<section class="card lc-main urgent"><div class="label">${dl}${fmt(T)}までに${to}に着く電車はありません</div></section>`;
       } else {
         const left = main.leave - plan.nowAbs;
         mainHtml = `<section class="card lc-main${left < 5 ? ' urgent' : ''}">
-          <div class="label">${plan.isTomorrow ? '明日 ' : ''}${fmt(T)}までに${to}に着くには</div>
+          <div class="label">${dl}${fmt(T)}までに${to}に着くには</div>
           <div class="lc-count">${fmt(main.leave)}</div>
           <div class="lc-times"><div>までに${from}を出る　${left < 0 ? '<b class="late">もう間に合いません</b>' : `あと <span>${G.dur(left)}</span>`}</div>
           <div>${to}に <b>${fmt(main.arrive)}</b> 着</div></div>
@@ -203,9 +217,9 @@
 
   function onClick(e) {
     const b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.dir) { S.dir = b.dataset.dir; }
-    else if (b.dataset.mode) { S.mode = b.dataset.mode; }
-    else if (b.dataset.p) { S.arrive[S.dir] = b.dataset.p; }
+    if (b.dataset.dir) { S.dir = b.dataset.dir; delete S.arriveDay; }
+    else if (b.dataset.mode) { S.mode = b.dataset.mode; delete S.arriveDay; }
+    else if (b.dataset.p) { S.arrive[S.dir] = b.dataset.p; delete S.arriveDay; }
     else if (b.dataset.k) { CFG[b.dataset.k] = S[b.dataset.k] = Number(b.dataset.v); }
     else if (b.id === 'lcDay') { S.dayMode = { auto: 'wk', wk: 'ho', ho: 'auto' }[S.dayMode]; }
     else return;
@@ -213,12 +227,13 @@
   }
   function onChange(e) {
     if (e.target.id !== 'lcArrive' || !e.target.value) return;
-    S.arrive[S.dir] = e.target.value; saveS(); render();
+    S.arrive[S.dir] = e.target.value; delete S.arriveDay; saveS(); render();
   }
 
   // ホームから「この時刻に着くには」「今出るなら」を聞くための窓口
-  function open(dir, mode, arriveHHMM) {
+  function open(dir, mode, arriveHHMM, dayYmd) {
     S.dir = dir; S.mode = mode; if (arriveHHMM) S.arrive[dir] = arriveHHMM;
+    if (dayYmd) S.arriveDay = dayYmd; else delete S.arriveDay;
     saveS(); G.go('commute');
   }
 
@@ -228,7 +243,7 @@
     v.addEventListener('change', onChange);
   }
 
-  G.commute = { nowPlan, arrivePlan, routeUrl, open, init };
+  G.commute = { nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
   // 秒まで数えるので、表示中は1秒ごとに描き直す（入力中は止める）
   G.reg('commute', { title: '通学', render, tick: 1, skipTick: () => document.activeElement && document.activeElement.id === 'lcArrive' });
 })();

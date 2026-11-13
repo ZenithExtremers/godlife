@@ -163,3 +163,17 @@ label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .room.mine{border-color:var(--accent);background:rgba(255,181,71,.15)}
 .editing .room{cursor:pointer}
 .sel{display:flex;gap:8px}.sel select{flex:1}
+.ocr-row{display:flex;gap:8px;border-top:1px solid var(--line);padding:8px 0}
+.ocr-row input,.ocr-row select{margin:3px 0;padding:8px;font-size:15px}
+.ocr-on{flex:none;padding-top:10px}.ocr-on input{width:22px;height:22px}
+.ocr-f{flex:1;min-width:0}
+.ocr-mode{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--sub);margin:10px 0}
+.ocr-mode input{width:20px;height:20px;flex:none;margin:0}
+.crows{padding:4px 14px}
+.crow{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line);cursor:pointer}
+.crow:first-child{border-top:0}
+.crow .tx{flex:1;min-width:0}
+.crow .t1{font-size:12px;color:var(--sub)}
+.crow .t2{font-size:19px;font-weight:800;margin-top:1px}
+.crow .t3{font-size:13px;color:var(--sub);margin-top:1px}
+.crow .go{color:var(--sub);font-size:20px}

@@ -40,7 +40,8 @@
     const min = G.minOfDay(now);
     const days = DAYS.filter((d) => d !== 6 || showSat());
     const a = all();
-    let h = `<div class="tt" style="grid-template-columns:34px repeat(${days.length},1fr)"><div></div>`;
+    let h = `<button class="btn pri full" id="ttOcr" style="margin:4px 0 6px">📷 スクショから時間割を読み込む</button><input type="file" id="ttFile" accept="image/*" hidden>`;
+    h += `<div class="tt" style="grid-template-columns:34px repeat(${days.length},1fr)"><div></div>`;
     h += days.map((d) => `<div class="hd${d === today ? ' today' : ''}">${G.WD[d]}</div>`).join('');
     for (const p of G.PERIODS) {
       h += `<div class="pd">${p.n}<small>${G.fmtMin(p.s)}</small></div>`;
@@ -62,6 +63,73 @@
       edit(Number(b.dataset.d), Number(b.dataset.p));
     };
     G.$('ttSat').onclick = () => { const o = opt(); o.sat = !showSat(); G.save(OPT, o); render(); };
+    G.$('ttOcr').onclick = () => G.$('ttFile').click();
+    G.$('ttFile').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) importShot(f); };
+  }
+
+  /* ---- スクショから読み込む ---- */
+  async function importShot(file) {
+    G.openEditor('<h3>スクショを読み取り中</h3><p id="ocrMsg">準備しています…</p><p class="muted">画像はこの端末の中だけで読み取ります（どこにも送りません）。</p>');
+    let r;
+    try { r = await G.ocr.run(file, (m) => { const el = G.$('ocrMsg'); if (el) el.textContent = m; }); }
+    catch (e) {
+      G.openEditor(`<h3>読み取れませんでした</h3><p>${G.esc(e.message || e)}</p><button class="btn full" id="oClose">閉じる</button>`, (root) => { root.querySelector('#oClose').onclick = G.closeEditor; });
+      return;
+    }
+    review(r);
+  }
+
+  // 読み取った結果を確認・修正してから保存する
+  function review(r) {
+    const rows = r.entries.map((e) => ({ ...e, on: true }));
+    const dayOpt = (d) => DAYS.map((x) => `<option value="${x}"${x === d ? ' selected' : ''}>${G.WD[x]}</option>`).join('');
+    const perOpt = (p) => G.PERIODS.map((x) => `<option value="${x.n}"${x.n === p ? ' selected' : ''}>${x.n}限</option>`).join('');
+    const rowHtml = (e, i) => `<div class="ocr-row" data-i="${i}">
+        <label class="ocr-on"><input type="checkbox" data-f="on"${e.on ? ' checked' : ''}></label>
+        <div class="ocr-f"><div class="sel"><select data-f="d">${dayOpt(e.d)}</select><select data-f="p">${perOpt(e.p)}</select></div>
+        <input data-f="name" value="${G.esc(e.name)}" placeholder="授業名">
+        <div class="row2"><input data-f="room" value="${G.esc(e.room)}" placeholder="教室"><input data-f="teacher" value="${G.esc(e.teacher)}" placeholder="先生"></div></div></div>`;
+    const has = Object.keys(all()).length;
+    G.openEditor(`<h3>読み取り結果（${rows.length}コマ）</h3>
+      ${rows.length ? `<p>まちがっているところを直して、いらない行はチェックを外してください。${r.guessedRows ? '<br><b>⚠ 時限の数字が読み取れなかったので、位置から推測しています。時限をよく確認してください。</b>' : ''}</p>`
+        : '<p>授業を見つけられませんでした。曜日（月〜金）と時限の数字が写るように撮り直すか、マスをタップして手で入れてください。</p>'}
+      <div id="ocrRows">${rows.map(rowHtml).join('')}</div>
+      <button class="btn full" id="oAdd">＋ 行を足す</button>
+      ${has ? `<label class="ocr-mode"><input type="checkbox" id="oReplace"> 今の時間割を全部消してから入れる（チェックなしなら同じマスだけ上書き）</label>` : ''}
+      <button class="btn pri full" id="oSave">時間割に入れる</button>
+      <button class="btn full" id="oCancel">やめる</button>`, (root) => {
+      const box = root.querySelector('#ocrRows');
+      const upd = (e) => {
+        const el = e.target, f = el.dataset.f; if (!f) return;
+        const i = Number(el.closest('[data-i]').dataset.i);
+        rows[i][f] = f === 'on' ? el.checked : (f === 'd' || f === 'p') ? Number(el.value) : el.value;
+      };
+      box.addEventListener('input', upd);
+      box.addEventListener('change', upd);
+      root.querySelector('#oAdd').onclick = () => {
+        rows.push({ d: 1, p: 1, name: '', room: '', teacher: '', on: true });
+        box.insertAdjacentHTML('beforeend', rowHtml(rows[rows.length - 1], rows.length - 1));
+      };
+      root.querySelector('#oSave').onclick = () => {
+        const use = rows.filter((e) => e.on && e.name.trim());
+        const rep = root.querySelector('#oReplace');
+        const a = rep && rep.checked ? {} : all();
+        const before = JSON.stringify(all());
+        // 同じ授業名には同じ色を付ける
+        const colorOf = {};
+        Object.values(a).forEach((c) => { colorOf[c.name] = c.color; });
+        let k = Object.keys(colorOf).length;
+        for (const e of use) {
+          const name = e.name.trim();
+          if (!colorOf[name]) colorOf[name] = COLORS[k++ % COLORS.length];
+          a[`${e.d}-${e.p}`] = { name, room: e.room.trim(), teacher: e.teacher.trim(), memo: '', color: colorOf[name] };
+        }
+        G.save(KEY, a);
+        G.closeEditor(); render();
+        G.toast(`${use.length}コマを入れました`, () => { G.raw(KEY, before); render(); });
+      };
+      root.querySelector('#oCancel').onclick = G.closeEditor;
+    });
   }
 
   function edit(d, p) {
