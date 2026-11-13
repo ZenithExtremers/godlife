@@ -250,7 +250,14 @@
   };
 
   /* ---- 現在地（手で選ぶ・GPS） ---- */
-  const HKEY = 'gl.homePos';
+  // 端末で登録し直した位置（家、または駅の位置の手直し）。{ home: {lat,lng}, kashiwa: {...} }
+  const PKEY = 'gl.placePos';
+  function myPos() {
+    const m = G.load(PKEY, {});
+    const h = G.load('gl.homePos', null); // 旧形式
+    if (h && !m.home) m.home = h;
+    return m;
+  }
   function distM(a, b) {
     const R = 6371e3, r = Math.PI / 180;
     const x = (b.lng - a.lng) * r * Math.cos(((a.lat + b.lat) / 2) * r), y = (b.lat - a.lat) * r;
@@ -262,35 +269,59 @@
     if (loc === 'univ') S.dir = 'home';
     delete S.arriveDay; saveS();
   }
-  // 位置はボタンを押したときに1回だけ取り、一番近い地点を選ぶ。位置そのものは保存しない（家の登録を除く）
-  function locate(registerHome) {
+  const km = (d) => (d < 1000 ? `${Math.round(d / 10) * 10}m` : `${(d / 1000).toFixed(1)}km`);
+  // 位置はボタンを押したときに1回だけ取り、一番近い地点を選ぶ。位置そのものは保存しない（登録したときを除く）
+  function locate(register, done) {
     if (!navigator.geolocation) { G.toast('この端末では位置情報が使えません'); return; }
     G.toast('現在地を調べています…');
     navigator.geolocation.getCurrentPosition((pos) => {
       const me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      if (registerHome) {
-        G.save(HKEY, { lat: Math.round(me.lat * 1e4) / 1e4, lng: Math.round(me.lng * 1e4) / 1e4 });
-        pickLoc('home'); render(); G.toast('この場所を「家」として登録しました（この端末だけに保存）'); return;
+      const acc = Math.round(pos.coords.accuracy || 0);
+      if (register) {
+        const m = myPos(); m[register] = { lat: Math.round(me.lat * 1e4) / 1e4, lng: Math.round(me.lng * 1e4) / 1e4 };
+        G.save(PKEY, m);
+        pickLoc(register); S.gpsMsg = `「${PLACES[register].name}」の位置を登録しました（精度±${km(acc)}）${acc > 200 ? '。精度が低いので、屋外でもう一度登録するのがおすすめです' : ''}`;
+        saveS(); G.toast(S.gpsMsg); done && done(); return;
       }
-      const home = G.load(HKEY, null);
-      const cands = ORDER.map((k) => ({ k, ...PLACES[k], ...(k === 'home' && home ? { lat: home.lat, lng: home.lng, r: 400 } : {}) })).filter((p) => p.lat);
-      const near = cands.map((p) => ({ ...p, d: distM(me, p) })).sort((a, b) => a.d - b.d);
-      const hit = near.find((p) => p.d <= p.r);
-      if (hit) { pickLoc(hit.k); render(); G.toast(`📍 ${hit.name}の近く（約${Math.round(hit.d / 10) * 10}m）`); }
-      else G.toast(`登録した地点の近くではありません（一番近いのは${near[0].name}・約${(near[0].d / 1000).toFixed(1)}km）。手で選んでください`);
+      const mine = myPos();
+      const near = ORDER.map((k) => ({ k, ...PLACES[k], ...(mine[k] ? { lat: mine[k].lat, lng: mine[k].lng } : {}), r: k === 'home' ? 400 : PLACES[k].r }))
+        .filter((p) => p.lat).map((p) => ({ ...p, d: distM(me, p) })).sort((a, b) => a.d - b.d);
+      const best = near[0];
+      // GPSの誤差（屋内だと数百m〜1km）も見込んで判定し、3km以内なら一番近い地点を選ぶ
+      if (best && (best.d <= best.r + Math.min(acc, 1000) || best.d <= 3000)) {
+        pickLoc(best.k);
+        S.gpsMsg = `📍 ${best.name}を選びました（約${km(best.d)}・精度±${km(acc)}）`;
+      } else {
+        S.gpsMsg = `近くに登録した地点がありません（一番近いのは${best ? best.name + '・約' + km(best.d) : 'なし'}、精度±${km(acc)}）。手で選んでください`;
+      }
+      saveS(); G.toast(S.gpsMsg); done && done();
     }, (err) => {
-      G.toast(err.code === 1 ? '位置情報が許可されていません（ブラウザの設定から許可できます）' : '現在地を取得できませんでした');
-    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+      S.gpsMsg = err.code === 1 ? '位置情報が許可されていません（ブラウザやスマホの設定から、このサイトの位置情報を許可してください）' : '現在地を取得できませんでした（電波の良い場所でもう一度）';
+      saveS(); G.toast(S.gpsMsg); done && done();
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
   }
-  function locCard() {
+  // 現在地のボタン一式（通学タブとホームで共通）
+  function locChips(compact) {
     const l = getLoc();
-    const homeSet = !!G.load(HKEY, null);
-    return `<div class="card loc"><div class="hrow"><b style="flex:1">📍 現在地</b><button class="btn" data-gps="1">GPSで選ぶ</button></div>
-      <div class="days" style="margin-top:8px">${ORDER.map((k) => `<button data-loc="${k}" class="${l === k ? 'on' : ''}">${PLACES[k].short}</button>`).join('')}
+    const mine = myPos();
+    const reg = l || 'home';
+    return `<div class="locbox${compact ? ' compact' : ''}"><div class="days">
+      <button data-gps="1" class="gps">📍GPS</button>${ORDER.map((k) => `<button data-loc="${k}" class="${l === k ? 'on' : ''}">${PLACES[k].short}</button>`).join('')}
       <button data-loc="" class="${l ? '' : 'on'}">自動</button></div>
-      <div class="muted" style="margin-top:4px">${l ? `${PLACES[l].name}から出発（3時間たつと自動に戻ります）` : '自動：行きは家から、帰りは大学から'}
-      ${homeSet ? '' : '・<a href="#" data-homereg="1">今いる場所を「家」として登録</a>（GPSで家を見分けるため）'}</div></div>`;
+      ${compact ? '' : `<div class="muted" style="margin-top:4px">${l ? `${PLACES[l].name}から出発（3時間たつと自動に戻ります）` : '自動：行きは家から、帰りは大学から'}</div>
+      ${S.gpsMsg ? `<div class="muted">${G.esc(S.gpsMsg)}</div>` : ''}
+      <div class="muted"><a href="#" data-reg="${reg}">今いる場所を「${PLACES[reg].name}」の位置として登録</a>${mine[reg] ? '（登録済み・登録し直す）' : reg === 'home' ? '（GPSで家を見分けるため）' : '（GPSがずれるとき）'}</div>`}</div>`;
   }
+  // 現在地ボタンが押されたら true を返す（rerender はその画面を描き直す関数）
+  function handleLoc(e, rerender) {
+    const reg = e.target.closest('[data-reg]');
+    if (reg) { e.preventDefault(); locate(reg.dataset.reg, rerender); return true; }
+    const b = e.target.closest('button'); if (!b) return false;
+    if (b.dataset.loc !== undefined) { pickLoc(b.dataset.loc || null); delete S.gpsMsg; saveS(); rerender(); return true; }
+    if (b.dataset.gps) { locate(null, rerender); return true; }
+    return false;
+  }
+  const locCard = () => `<div class="card loc"><b>📍 現在地</b>${locChips(false)}</div>`;
 
   function render() {
     const v = G.$('v-commute');
@@ -375,11 +406,8 @@
   }
 
   function onClick(e) {
-    const ln = e.target.closest('[data-homereg]');
-    if (ln) { e.preventDefault(); locate(true); return; }
+    if (handleLoc(e, render)) return;
     const b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.loc !== undefined) { pickLoc(b.dataset.loc || null); render(); return; }
-    if (b.dataset.gps) { locate(false); return; }
     if (b.dataset.dir) { S.dir = b.dataset.dir; delete S.arriveDay; }
     else if (b.dataset.mode) { S.mode = b.dataset.mode; delete S.arriveDay; }
     else if (b.dataset.p) { S.arrive[S.dir] = b.dataset.p; delete S.arriveDay; }
@@ -427,7 +455,7 @@
     return { dir: tr.dir, dep, o, base: plan.base, nowAbs };
   }
 
-  G.commute = { PLACES, getLoc, fromFor, trip, tripStart, tripEnd, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
+  G.commute = { PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
   // 秒まで数えるので、表示中は1秒ごとに描き直す（入力中は止める）
   G.reg('commute', { title: '通学', render, tick: 1, skipTick: () => document.activeElement && document.activeElement.id === 'lcArrive' });
 })();

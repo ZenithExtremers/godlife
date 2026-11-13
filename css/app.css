@@ -195,3 +195,10 @@ label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .lc-list .tag{display:inline-block;font-size:12px;font-weight:700;background:var(--soft);border-radius:6px;padding:1px 6px;margin-right:6px}
 .locchip{margin-left:8px;font-size:12px;font-weight:700;color:var(--ok)}
 .loc .days button{flex:1 0 auto}
+.locbox .days{flex-wrap:wrap;overflow:visible}
+.locbox .days button{flex:1 0 auto;padding:7px 9px}
+.locbox .days button.gps{border-color:var(--ok);color:var(--ok);font-weight:700}
+.locbox.compact{padding:10px 0 4px}
+.locbox.compact .days button{padding:6px 7px;font-size:12px}
+.loc .locbox{margin-top:8px}
+.toast span{white-space:normal;overflow:visible;line-height:1.5}

@@ -27,8 +27,15 @@
   }
 
   // 次に授業がある日（今日の1コマ目がまだなら今日）
-  function nextClassDay(now) {
+  // 家以外（駅など）にいるときは、今日まだ始まっていない次の対面授業を目標にする
+  function nextClassDay(now, from) {
     const min = G.minOfDay(now);
+    if (from && from !== 'home') {
+      const d = new Date(now); d.setHours(0, 0, 0, 0);
+      const list = G.classes.dayList(d);
+      const nx = list.find((x) => !G.classes.isOnline(x.c) && x.s > min);
+      if (nx) return { k: 0, date: d, first: nx, onlineBefore: [] };
+    }
     for (let k = 0; k <= 7; k++) {
       const d = new Date(now); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + k);
       // オンライン授業は家で受けるので、大学に行くのは最初の対面の授業から
@@ -46,11 +53,16 @@
   function classRow(now) {
     if (!Object.keys(G.classes.all()).length)
       return row(`G.go('class')`, '授業に合わせて', '時間割を登録しよう', '1コマ目に間に合う「家を出る時刻」がここに出ます（スクショからも読み込めます）');
-    const nd = nextClassDay(now);
+    // 現在地が駅なら今日はそこから、別の日は家から
+    const loc = G.commute.fromFor('school');
+    if (!loc) return ''; // 大学にいる
+    const nd = nextClassDay(now, loc);
     if (!nd) return '';
-    const plan = G.commute.arrivePlan('school', now, nd.first.s, nd.k);
+    const from = nd.k === 0 ? loc : 'home';
+    const P = G.commute.PLACES[from];
+    const plan = G.commute.arrivePlan('school', now, nd.first.s, nd.k, from);
     const o = plan.opts[0];
-    const label = `${G.commute.dayLabel(nd.date, now) || '今日 '}${pfx(nd.first)}（${G.esc(nd.first.c.name)}）に間に合うには`;
+    const label = `${G.commute.dayLabel(nd.date, now) || '今日 '}${pfx(nd.first)}（${G.esc(nd.first.c.name)}）に間に合うには${from !== 'home' ? `（📍${P.name}から）` : ''}`;
     const go = `G.commute.open('school','arrive','${hhmm(nd.first.s)}','${G.ymd(nd.date)}')`;
     if (!o) return row(go, label, '間に合う電車がありません', '', true);
     const left = o.leave - plan.nowAbs;
@@ -64,7 +76,7 @@
       sub += `<br>💻 ${ob.map((x) => x.n + '限').join('・')}はオンライン（家で受けてから出発）`;
       if (o.leave < lastOn.e) sub += `<br><span class="late">⚠ ${lastOn.n}限のオンライン授業（〜${G.fmtMin(lastOn.e)}）の途中で出発になります</span>`;
     }
-    return row(go, label, `${G.fmtMin(o.leave)} に家を出る`, sub, left < 0);
+    return row(go, label, `${G.fmtMin(o.leave)} に${P.short}を出る`, sub, left < 0);
   }
 
   // ② 今から行くなら
@@ -154,7 +166,7 @@
     if (tr) rows = tr.dir === 'school' ? [homeRow(now, cs)] : [classRow(now), goNowRow(now, cs)];
     const btns = `<div class="row2 tripbtns"><button class="btn${atHome ? ' pri' : ''}" onclick="G.home.leave('school')">🚪 家を出た</button><button class="btn${atHome ? '' : ' pri'}" onclick="G.home.leave('home')">🏫 大学を出た</button></div>`;
     const loc = G.commute.getLoc();
-    return `<div class="gh">🚃 通学${loc ? `<span class="locchip">📍${G.commute.PLACES[loc].name}</span>` : ''}<a href="#commute">${loc ? '現在地を変える' : '現在地・時刻表'} ›</a></div><div class="card crows">${rows.filter(Boolean).join('')}${btns}</div>`;
+    return `<div class="gh">🚃 通学${loc ? `<span class="locchip">📍${G.commute.PLACES[loc].name}</span>` : ''}<a href="#commute">時刻表 ›</a></div><div class="card crows">${G.commute.locChips(true)}${rows.filter(Boolean).join('')}${btns}</div>`;
   }
 
   function kadaiTile() {
@@ -190,5 +202,7 @@
   }
 
   G.home = { leave };
+  // 現在地ボタン（通学欄）
+  G.$('v-home').addEventListener('click', (e) => G.commute.handleLoc(e, render));
   G.reg('home', { title: 'GOD Life', render, tick: 15 });
 })();
