@@ -95,21 +95,21 @@
         leave: kDep, arrive: araArr + CFG.bikeHome, onboard: [kDep, araArr],
         search: { from: '柏', to: '荒川沖', dep: kDep },
         legs: [['柏', fmt(kDep) + ' 発', `${type} ${dest}行（乗車中）`], ['荒川沖', fmt(araArr) + ' 着', '自転車 ' + CFG.bikeHome + '分']],
-        steps: [{ t: kDep, do: `${type} ${dest}行に乗っている` }, { t: araArr, do: `荒川沖 ${fmt(araArr)} 着 → 自転車で家へ（${CFG.bikeHome}分）` }],
+        steps: [{ arr: 'ara', t: kDep, do: `${type} ${dest}行に乗っている` }, { arr: 'home', t: araArr, do: `荒川沖 ${fmt(araArr)} 着 → 自転車で家へ（${CFG.bikeHome}分）` }],
       });
       return out;
     }
     for (const [kDep, type, dest, araArr] of tt.chuDown) {
       const tail = [
-        { t: kDep, do: `柏 ${fmt(kDep)} 発 ${type} ${dest}行に乗る` },
-        { t: araArr, do: `荒川沖 ${fmt(araArr)} 着 → 自転車で家へ（${CFG.bikeHome}分）` },
+        { arr: 'ara', t: kDep, do: `柏 ${fmt(kDep)} 発 ${type} ${dest}行に乗る` },
+        { arr: 'home', t: araArr, do: `荒川沖 ${fmt(araArr)} 着 → 自転車で家へ（${CFG.bikeHome}分）` },
       ];
       if (from === 'kashiwa') {
         out.push({
           leave: kDep - CFG.margin, arrive: araArr + CFG.bikeHome,
           search: { from: '柏', to: '荒川沖', dep: kDep },
           legs: [['柏', fmt(kDep) + ' 発', `${type} ${dest}行`], ['荒川沖', fmt(araArr) + ' 着', '自転車 ' + CFG.bikeHome + '分']],
-          steps: [{ t: kDep - CFG.margin, do: '柏駅のホームへ' }, ...tail],
+          steps: [{ arr: 'kashiwa', t: kDep - CFG.margin, do: '柏駅のホームへ' }, ...tail],
         });
         continue;
       }
@@ -128,9 +128,9 @@
         ],
         // 移動中の表示用（t はその時刻、do はその時にやること）
         steps: [
-          walk ? { t: mk - walk, do: `南柏駅まで歩く（${walk}分）` } : { t: mk - CFG.margin, do: '南柏駅のホームへ' },
-          { t: mk, do: `南柏 ${fmt(mk)} 発 各駅停車に乗る` },
-          { t: mk + CFG.mkKashiwa, do: `柏で乗り換え → ${fmt(kDep)} 発 ${type} ${dest}行` },
+          walk ? { arr: 'mk', t: mk - walk, do: `南柏駅まで歩く（${walk}分）` } : { arr: 'mk', t: mk - CFG.margin, do: '南柏駅のホームへ' },
+          { arr: 'kashiwa', t: mk, do: `南柏 ${fmt(mk)} 発 各駅停車に乗る` },
+          { arr: 'kashiwa', t: mk + CFG.mkKashiwa, do: `柏で乗り換え → ${fmt(kDep)} 発 ${type} ${dest}行` },
           ...tail,
         ],
       });
@@ -148,10 +148,10 @@
           leave: araDep, arrive: mk + CFG.walkUniv, onboard: [araDep, kArr],
           search: { from: '荒川沖', to: '南柏', dep: araDep },
           legs: [['荒川沖', fmt(araDep) + ' 発', `${type} ${dest}行（乗車中）`], ['柏', `${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発`, '各駅停車'], ['南柏', fmt(mk) + ' 着', '徒歩 ' + CFG.walkUniv + '分']],
-          steps: [{ t: araDep, do: `${type} ${dest}行に乗っている` },
-            { t: kArr, do: `柏 ${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗り換え` },
-            { t: mk - CFG.mkKashiwa, do: `柏 ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗る` },
-            { t: mk, do: `南柏 ${fmt(mk)} 着 → 大学まで歩く（${CFG.walkUniv}分）` }],
+          steps: [{ arr: 'kashiwa', t: araDep, do: `${type} ${dest}行に乗っている` },
+            { arr: 'kashiwa', t: kArr, do: `柏 ${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗り換え` },
+            { arr: 'mk', t: mk - CFG.mkKashiwa, do: `柏 ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗る` },
+            { arr: 'univ', t: mk, do: `南柏 ${fmt(mk)} 着 → 大学まで歩く（${CFG.walkUniv}分）` }],
         });
       }
       return out;
@@ -163,8 +163,8 @@
           leave: kd - CFG.margin, arrive: mk + CFG.walkUniv,
           search: { from: '柏', to: '南柏', dep: kd },
           legs: [['柏', fmt(kd) + ' 発', '各駅停車'], ['南柏', fmt(mk) + ' 着', '徒歩 ' + CFG.walkUniv + '分']],
-          steps: [{ t: kd - CFG.margin, do: '柏駅のホームへ' }, { t: kd, do: `柏 ${fmt(kd)} 発 各駅停車に乗る` },
-            { t: mk, do: `南柏 ${fmt(mk)} 着 → 大学まで歩く（${CFG.walkUniv}分）` }],
+          steps: [{ arr: 'kashiwa', t: kd - CFG.margin, do: '柏駅のホームへ' }, { arr: 'mk', t: kd, do: `柏 ${fmt(kd)} 発 各駅停車に乗る` },
+            { arr: 'univ', t: mk, do: `南柏 ${fmt(mk)} 着 → 大学まで歩く（${CFG.walkUniv}分）` }],
         });
       }
       return prune(out);
@@ -183,11 +183,11 @@
           ['南柏', fmt(mk) + ' 着', '徒歩 ' + CFG.walkUniv + '分'],
         ],
         steps: [
-          bike ? { t: araDep - CFG.margin - bike, do: `荒川沖駅まで自転車（${bike}分）` } : { t: araDep - CFG.margin, do: '荒川沖駅のホームへ' },
-          { t: araDep, do: `荒川沖 ${fmt(araDep)} 発 ${type} ${dest}行に乗る` },
-          { t: kArr, do: `柏 ${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗り換え` },
-          { t: mk - CFG.mkKashiwa, do: `柏 ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗る` },
-          { t: mk, do: `南柏 ${fmt(mk)} 着 → 大学まで歩く（${CFG.walkUniv}分）` },
+          bike ? { arr: 'ara', t: araDep - CFG.margin - bike, do: `荒川沖駅まで自転車（${bike}分）` } : { arr: 'ara', t: araDep - CFG.margin, do: '荒川沖駅のホームへ' },
+          { arr: 'kashiwa', t: araDep, do: `荒川沖 ${fmt(araDep)} 発 ${type} ${dest}行に乗る` },
+          { arr: 'kashiwa', t: kArr, do: `柏 ${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗り換え` },
+          { arr: 'mk', t: mk - CFG.mkKashiwa, do: `柏 ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗る` },
+          { arr: 'univ', t: mk, do: `南柏 ${fmt(mk)} 着 → 大学まで歩く（${CFG.walkUniv}分）` },
         ],
       });
     }
@@ -199,7 +199,7 @@
     const m = dir === 'school' ? CFG.walkUniv : CFG.bikeHome;
     const what = dir === 'school' ? `大学まで歩く（${m}分）` : `家まで自転車（${m}分）`;
     return { leave: start, arrive: start + m, search: null, move: true,
-      legs: [[dir === 'school' ? '南柏' : '荒川沖', fmt(start) + ' 出発', what]], steps: [{ t: start, do: what }] };
+      legs: [[dir === 'school' ? '南柏' : '荒川沖', fmt(start) + ' 出発', what]], steps: [{ arr: dir === 'school' ? 'univ' : 'home', t: start, do: what }] };
   }
   // 同じ時刻以前に着く、もっと遅く出られる候補があれば、早く出るほうは省く
   function prune(list) {
@@ -355,14 +355,11 @@
   // 現在地のボタン一式（通学タブとホームで共通）
   function locChips(compact) {
     const l = getLoc();
-    const mine = myPos();
     const reg = l && l !== 'train' ? l : 'home';
     return `<div class="locbox${compact ? ' compact' : ''}"><div class="days">
       <button data-gps="1" class="gps">📍GPS</button>${ORDER.map((k) => `<button data-loc="${k}" class="${l === k ? 'on' : ''}">${PLACES[k].short}</button>`).join('')}
       <button data-loc="" class="${l ? '' : 'on'}">自動</button></div>
-      ${compact ? '' : `<div class="muted" style="margin-top:4px">${l ? `${PLACES[l].name}から出発（3時間たつと自動に戻ります）` : '自動：行きは家から、帰りは大学から'}</div>
-      ${S.gpsMsg ? `<div class="muted">${G.esc(S.gpsMsg)}</div>` : ''}
-      <div class="muted"><a href="#" data-reg="${reg}">今いる場所を「${PLACES[reg].name}」の位置として登録</a>${mine[reg] ? '（登録済み・登録し直す）' : reg === 'home' ? '（GPSで家を見分けるため）' : '（GPSがずれるとき）'}</div>`}</div>`;
+      ${compact ? '' : `<div class="muted" style="margin-top:6px"><a href="#" data-reg="${reg}">今いる場所を「${PLACES[reg].short}」として登録</a></div>`}</div>`;
   }
   // 現在地ボタンが押されたら true を返す（rerender はその画面を描き直す関数）
   function handleLoc(e, rerender) {
@@ -508,11 +505,16 @@
     return old;
   }
   const tripEnd = () => G.raw(TKEY, null);
-  // 移動中カードの手順をタップしたら、そこまで終わったことにする（もう一度タップで戻す）
-  function tripMark(i) {
+  // 移動中カードの手順をタップしたら、そこまで終わったことにして、その駅から乗れる一番早い電車で組み直す
+  // 返り値 'end' は目的地に着いた（トリップ終了）
+  function tripMark(i, now = new Date()) {
     const tr = G.load(TKEY, null); if (!tr) return;
-    tr.done = tr.done === i ? i - 1 : i;
-    tr.doneAt = Date.now(); // 次の手順が始まった時刻（これ以降の予定をずらす）
+    const cur = trip(now); if (!cur) return;
+    tr.marks ||= [];
+    if (i <= cur.done) { tr.marks.pop(); G.save(TKEY, tr); return; } // 終わった手順をもう一度タップ → 1つ戻す
+    const st = cur.o.steps[i];
+    if (!st || !st.arr || st.arr === (tr.dir === 'school' ? 'univ' : 'home')) { tripEnd(); return 'end'; }
+    tr.marks.push({ from: st.arr, at: now.getTime(), prefix: cur.o.steps.slice(0, i + 1).map(({ arr, t, do: d }) => ({ arr, t, do: d })) });
     G.save(TKEY, tr);
   }
   function trip(now) {
@@ -521,11 +523,21 @@
     const dep = new Date(tr.t);
     // 出た時刻の1分前までに出ていれば乗れる電車を探す（ボタンを押すのが少し遅れても大丈夫なように）
     const plan = nowPlan(tr.dir, new Date(tr.t - 60e3));
-    const o = plan.opts[0];
+    let o = plan.opts[0], done = -1;
     const nowAbs = plan.nowAbs + (now - dep) / 60000 + 1;
+    const m = tr.marks && tr.marks[tr.marks.length - 1];
+    if (m) {
+      // タップした時刻に、その駅から出発し直したとして探す
+      const p2 = nowPlan(tr.dir, new Date(m.at), m.from);
+      const o2 = p2.opts[0];
+      if (o2) {
+        const k = Math.round(p2.nowAbs - (plan.nowAbs + (m.at - dep) / 60000 + 1)); // 日付またぎの差（ふつうは0）
+        o = { ...o2, arrive: o2.arrive - k, steps: [...m.prefix, ...o2.steps.map((x) => ({ ...x, t: x.t - k }))], search: o2.search };
+        done = m.prefix.length - 1;
+      }
+    }
     if (!o || nowAbs > o.arrive + 30 || now - dep > 4 * 3600e3) { tripEnd(); return null; } // 着いて30分たったら自動で終わり
-    const doneAbs = tr.doneAt ? plan.nowAbs + (tr.doneAt - dep) / 60000 + 1 : null;
-    return { dir: tr.dir, dep, o, base: plan.base, nowAbs, done: tr.done == null ? -1 : tr.done, doneAbs };
+    return { dir: tr.dir, dep, o, base: plan.base, nowAbs, done };
   }
 
   G.commute = { PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };

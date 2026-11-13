@@ -36,11 +36,24 @@
   G.$('mClose').onclick = () => sheet.classList.remove('show');
   sheet.onclick = (e) => { if (e.target === sheet) sheet.classList.remove('show'); };
   G.$('editor').onclick = (e) => { if (e.target.id === 'editor') G.closeEditor(); };
+  // 表示の明るさ（自動＝スマホの設定に合わせる）
+  function applyTheme(t) {
+    if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    else document.documentElement.removeAttribute('data-theme');
+    const dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+    document.querySelector('meta[name=theme-color]').setAttribute('content', dark ? '#123e50' : '#1f5f7a');
+    document.querySelectorAll('#mTheme button').forEach((b) => b.classList.toggle('on', b.dataset.themeSet === (t || 'auto')));
+  }
+  applyTheme(G.load('gl.theme', 'auto'));
+  G.$('mTheme').onclick = (e) => {
+    const b = e.target.closest('[data-theme-set]'); if (!b) return;
+    G.save('gl.theme', b.dataset.themeSet); applyTheme(b.dataset.themeSet);
+  };
   G.$('mInstall').onclick = () => { G.$('installHelp').hidden = false; };
   G.$('mLogout').onclick = () => { sheet.classList.remove('show'); G.kadai.logout(); G.go('kadai'); };
 
   // バックアップ（時間割・通学設定・教室の追記・完了印）。合言葉は含めない
-  const BK = ['gl.classes', 'gl.classOpt', 'gl.commute', 'gl.roomsLocal', 'kadai-done'];
+  const BK = ['gl.classes', 'gl.classOpt', 'gl.commute', 'gl.roomsLocal', 'kadai-done', 'gl.theme', 'gl.placePos'];
   G.$('mBackup').onclick = () => {
     const o = {}; BK.forEach((k) => { const v = G.raw(k); if (v != null) o[k] = v; });
     const txt = 'GODLIFE1:' + btoa(unescape(encodeURIComponent(JSON.stringify(o))));

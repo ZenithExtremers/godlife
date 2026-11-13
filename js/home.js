@@ -146,11 +146,8 @@
     const { o, nowAbs: n } = tr, school = tr.dir === 'school';
     const to = school ? '大学' : '家';
     // 手順の最後に「着く」を足す。今の手順は「時刻」と「タップで終わらせた所」の進んでいる方
-    const A0 = [...o.steps, { t: o.arrive, do: `${to}に着く` }];
-    // タップで終わらせた次の手順は、タップした時刻に始まったとみなし、それ以降の予定をずらす
-    const off = tr.done >= 0 && tr.doneAbs != null && A0[tr.done + 1] ? tr.doneAbs - A0[tr.done + 1].t : 0;
-    const A = A0.map((x, i) => (i >= tr.done + 1 ? { ...x, t: x.t + off } : x));
-    const arrive = A[A.length - 1].t;
+    const A = [...o.steps, { t: o.arrive, do: `${to}に着く` }];
+    const arrive = o.arrive;
     const tIdx = A.findIndex((x, i) => i > 0 && x.t > n);
     const timeCur = tIdx === -1 ? A.length - 1 : tIdx - 1;
     const cur = Math.min(A.length - 1, Math.max(timeCur, tr.done + 1));
@@ -167,9 +164,8 @@
       <div class="muted" style="margin-top:6px">いま：${G.esc(A[cur].do)}</div>
       <div class="big">${next ? (next.t - n > 0 ? `あと${G.dur(next.t - n)}` : 'まもなく') : `まもなく${to}`}</div>
       <div class="meta">${next ? '次：' + G.esc(next.do) : `${to}に ${G.fmtMin(arrive)} に着く予定`}</div>
-      ${Math.round(off) ? `<div class="muted">予定より${Math.abs(Math.round(off))}分${off < 0 ? '早い' : '遅い'}ペース（${to}に ${G.fmtMin(arrive)} 着の見込み）</div>` : ''}
       <ol class="steps">${steps}</ol>
-      <div class="muted">終わった手順をタップすると、そこまで進めます（もう一度タップで戻す）</div>
+      <div class="muted">終わった手順をタップすると、その駅から乗れる電車で組み直します（もう一度タップで戻す）</div>
       ${note ? `<div class="meta">${note}</div>` : ''}
       <div class="row2" style="margin-top:10px"><button class="btn pri" onclick="G.commute.tripEnd();G.mods.home.render()">✓ 着いた</button>
       <a class="btn" href="${G.commute.routeUrl(o, tr.base)}">遅れを確認</a>
@@ -233,8 +229,8 @@
 
   // 手順をタップ：最後（着く）なら到着で終わり、それ以外はそこまで終わったことにする
   function mark(i, last) {
-    if (i === last) { G.commute.tripEnd(); render(); G.toast('おつかれさまでした！'); return; }
-    G.commute.tripMark(i); render();
+    if (i === last || G.commute.tripMark(i) === 'end') { G.commute.tripEnd(); render(); G.toast('おつかれさまでした！'); return; }
+    render();
   }
   G.home = { leave, mark };
   // 現在地ボタン（通学欄）

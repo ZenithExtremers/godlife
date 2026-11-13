@@ -1,6 +1,7 @@
-:root{--main:#1f5f7a;--accent:#ffb547;--bg:#f3f4f6;--card:#fff;--text:#1b1f23;--sub:#5f6b76;--line:#e3e5e8;--soft:#eef2f5;
+:root{color-scheme:light;--main:#1f5f7a;--accent:#ffb547;--bg:#f3f4f6;--card:#fff;--text:#1b1f23;--sub:#5f6b76;--line:#e3e5e8;--soft:#eef2f5;
 --over:#c62828;--today:#d84315;--soon:#ef8a00;--week:#b58f00;--later:#7a8691;--done:#2e7d32;--ok:#1e9e5a;--warn:#e8590c}
-@media (prefers-color-scheme:dark){:root{--bg:#101417;--card:#1a2025;--text:#e8edf1;--sub:#9aa7b2;--line:#2a3238;--soft:#222a31;--ok:#4ade80;--warn:#fb923c}}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#101417;--card:#1a2025;--text:#e8edf1;--sub:#9aa7b2;--line:#2a3238;--soft:#222a31;--ok:#4ade80;--warn:#fb923c;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#101417;--card:#1a2025;--text:#e8edf1;--sub:#9aa7b2;--line:#2a3238;--soft:#222a31;--ok:#4ade80;--warn:#fb923c;color-scheme:dark}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif}
 button,input,select,textarea{font-family:inherit}
@@ -19,7 +20,8 @@ main{max-width:680px;margin:0 auto;padding:8px 12px calc(84px + env(safe-area-in
 .tabbar button{position:relative;border:0;background:none;color:var(--sub);font-size:11px;padding:6px 0 4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
 .tabbar button i{font-style:normal;font-size:20px;line-height:1.1;filter:grayscale(1);opacity:.7}
 .tabbar button.on{color:var(--main);font-weight:700}
-@media (prefers-color-scheme:dark){.tabbar button.on{color:#7fc4e0}}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .tabbar button.on{color:#7fc4e0}}
+:root[data-theme=dark] .tabbar button.on{color:#7fc4e0}
 .tabbar button.on i{filter:none;opacity:1}
 .dot{position:absolute;top:3px;left:calc(50% + 8px);min-width:16px;height:16px;border-radius:8px;background:var(--over);color:#fff;font-size:10px;line-height:16px;padding:0 4px}
 
@@ -27,7 +29,8 @@ main{max-width:680px;margin:0 auto;padding:8px 12px calc(84px + env(safe-area-in
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
 .gh{font-size:13px;font-weight:700;margin:16px 4px 6px;color:var(--sub)}
 .gh a{float:right;font-weight:600;color:var(--main);text-decoration:none}
-@media (prefers-color-scheme:dark){.gh a{color:#7fc4e0}}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .gh a{color:#7fc4e0}}
+:root[data-theme=dark] .gh a{color:#7fc4e0}
 .muted{color:var(--sub);font-size:13px;line-height:1.7}
 .seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:3px;margin:8px 0}
 .seg button{flex:1;border:0;background:none;padding:9px 4px;border-radius:9px;font-size:14px;color:var(--sub);cursor:pointer}
@@ -39,7 +42,8 @@ main{max-width:680px;margin:0 auto;padding:8px 12px calc(84px + env(safe-area-in
 .empty{text-align:center;color:var(--sub);padding:40px 16px;line-height:1.9}
 .banner{background:#fdecea;color:#8a1c12;border-radius:12px;padding:10px 12px;font-size:13px;margin:10px 0;line-height:1.6}
 .banner.info{background:#e7f2f7;color:#174a5e}
-@media (prefers-color-scheme:dark){.banner{background:#3a1d1a;color:#ffb4a8}.banner.info{background:#16303b;color:#a9d7ea}}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .banner{background:#3a1d1a;color:#ffb4a8}:root:not([data-theme=light]) .banner.info{background:#16303b;color:#a9d7ea}}
+:root[data-theme=dark] .banner{background:#3a1d1a;color:#ffb4a8}:root[data-theme=dark] .banner.info{background:#16303b;color:#a9d7ea}
 input,select,textarea{width:100%;font-size:16px;padding:11px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text);margin:6px 0}
 label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .chip{display:inline-block;padding:3px 9px;border-radius:999px;font-weight:700;font-size:12px;background:var(--soft);color:var(--text)}

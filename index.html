@@ -11,6 +11,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="css/app.css">
+<script>try{var t=JSON.parse(localStorage.getItem('gl.theme'));if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 <title>GOD Life</title>
 </head>
 <body>
@@ -44,6 +45,7 @@
 <div class="sheet" id="sheet"><div class="in">
   <h3>メニュー</h3>
   <a class="btn" href="https://rp.reitaku-u.ac.jp/uprx/" target="_blank" rel="noopener">麗澤ポータル（UNIPA）を開く ↗</a>
+  <div class="seg" id="mTheme"><button data-theme-set="auto">🌗 自動</button><button data-theme-set="light">☀️ ライト</button><button data-theme-set="dark">🌙 ダーク</button></div>
   <button class="btn" id="mInstall">ホーム画面に追加する方法</button>
   <p id="installHelp" hidden><b>iPhone</b>：Safariの共有ボタン →「ホーム画面に追加」<br><b>Android</b>：Chromeの︙メニュー →「ホーム画面に追加」または「アプリをインストール」</p>
   <button class="btn" id="mBackup">時間割などをバックアップ（コピー）</button>
