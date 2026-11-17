@@ -190,6 +190,8 @@
     if (G.raw(KEY)) refresh();
   }
 
-  G.kadai = { summary, refresh, logout, init };
+  // 通知先（GitHub の NTFY_TOPIC）。課題データと一緒に暗号化されて届く
+  const topic = () => (st.data && st.data.ntfy) || '';
+  G.kadai = { topic, summary, refresh, logout, init };
   G.reg('kadai', { title: '課題', render, tick: 60, onShow: () => { if (G.raw(KEY)) refresh(); } });
 })();

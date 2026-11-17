@@ -500,6 +500,8 @@ def cloud(out_path):
     payload = {
         "updated": now.isoformat(timespec="minutes"),
         "error": error,
+        # 通知先（アプリの出発前の通知などにも使う）。合言葉で暗号化されるので、公開されても読めない
+        "ntfy": os.environ.get("NTFY_TOPIC", "").strip(),
         "items": [{"id": key_of(i), "title": i["title"], "teacher": i.get("teacher", ""), "due": i["due"]}
                   for i in sorted(items, key=lambda x: x["due"])],
     }
