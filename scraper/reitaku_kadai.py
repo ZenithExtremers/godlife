@@ -372,7 +372,7 @@ def notify(title, message):
         try:
             import requests
             requests.post(f"https://ntfy.sh/{topic}", data=message.encode("utf-8"),
-                          headers={"Title": title.encode("utf-8"), "Tags": "books"}, timeout=10)
+                          headers={"Title": title.encode("utf-8"), "Tags": "books", "Priority": "high"}, timeout=10)
             sent = True
         except Exception as e:
             print("スマホ通知に失敗:", e)

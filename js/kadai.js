@@ -5,6 +5,9 @@
   const DATA_URL = 'kadai.json';
   const st = { data: null, view: 'todo', loading: false };
 
+  const KEEP = 'kadai-keep'; // 「完了のままにする」を選んだ課題（ポータルに残っていても戻さない）
+  const keepSet = () => { try { return JSON.parse(G.raw(KEEP) || '{}'); } catch (e) { return {}; } };
+  const reverted = () => { try { return JSON.parse(G.raw('kadai-reverted') || '[]'); } catch (e) { return []; } };
   const doneSet = () => { try { return JSON.parse(G.raw(DONE) || '{}'); } catch (e) { return {}; } };
   function setDone(id, v) { const d = doneSet(); if (v) d[id] = Date.now(); else delete d[id]; G.raw(DONE, JSON.stringify(d)); }
 
@@ -86,6 +89,11 @@
       ['over', 'today', 'soon'].filter((g) => cnt[g]).map((g) => '<span class="chip ' + g + '">' + { over: '期限切れ', today: '今日', soon: '明日' }[g] + ' ' + cnt[g] + '</span>').join('') +
       '<span class="upd muted">' + G.esc(updTxt) + '</span></div></div>';
     if (d && d.error) h += '<div class="banner">⚠ 最新の取得に失敗しました：' + G.esc(d.error) + '</div>';
+    // 未完了に戻した課題（つけまちがい？）
+    const rv = reverted().map((id) => items.find((i) => i.id === id)).filter((i) => i && !dn[i.id]);
+    if (rv.length) h += '<div class="banner info"><b>完了にしていた課題が、ポータルではまだ未提出だったので未完了に戻しました。</b>' +
+      rv.map((i) => '<div class="rv"><span>' + G.esc(i.title) + '</span><button class="btn" data-keep="' + G.esc(i.id) + '">完了のままにする</button></div>').join('') +
+      '<div style="margin-top:6px"><button class="btn" data-rvclose="1">OK（未完了のままでいい）</button></div><div class="muted">紙で出した課題など、ポータルに残っていても完了でいいものは「完了のままにする」を押してください。</div></div>';
     if (upd && now - upd > 12 * 3600e3) h += '<div class="banner">⚠ 最後の更新から12時間以上たっています。GitHub Actions が止まっていないか確認してください</div>';
     h += '<div class="seg"><button data-kv="todo" class="' + (st.view === 'todo' ? 'on' : '') + '">未完了</button><button data-kv="done" class="' + (st.view === 'done' ? 'on' : '') + '">完了済み</button></div>';
     const showDone = st.view === 'done';
@@ -123,6 +131,11 @@
     const b = e.target.closest('button'); if (!b) return;
     if (b.id === 'kRf') { refresh(); return; }
     if (b.dataset.kv) { st.view = b.dataset.kv; render(); return; }
+    if (b.dataset.keep) { // ポータルに残っていても完了のままにする
+      const k = keepSet(); k[b.dataset.keep] = 1; G.raw(KEEP, JSON.stringify(k)); setDone(b.dataset.keep, true);
+      G.raw('kadai-reverted', JSON.stringify(reverted().filter((x) => x !== b.dataset.keep))); render(); return;
+    }
+    if (b.dataset.rvclose) { G.raw('kadai-reverted', null); render(); return; }
     const a = b.dataset.a; if (!a) return;
     const card = b.closest('.kcard'), id = card.dataset.id, it = st.data.items.find((i) => i.id === id);
     const val = a === 'done';
@@ -141,7 +154,21 @@
       G.raw(CACHE, JSON.stringify(st.data));
       // 消えた課題の完了印を掃除
       const dn = doneSet(), ids = {}; st.data.items.forEach((i) => { ids[i.id] = 1; });
-      Object.keys(dn).forEach((k) => { if (!ids[k]) delete dn[k]; }); G.raw(DONE, JSON.stringify(dn));
+      Object.keys(dn).forEach((k) => { if (!ids[k]) delete dn[k]; });
+      // 完了にしたあとの取得でもポータルに残っている（＝未提出）なら、つけまちがいとして未完了に戻す
+      // ただし取得に失敗したとき（error あり）と、「完了のままにする」を選んだものは戻さない
+      const keep = keepSet(), back = [];
+      const upd = Date.parse(st.data.updated || '');
+      if (!st.data.error && upd) {
+        Object.keys(dn).forEach((k) => { if (ids[k] && !keep[k] && upd - dn[k] > 10 * 60e3) { back.push(k); delete dn[k]; } });
+      }
+      G.raw(DONE, JSON.stringify(dn));
+      Object.keys(keep).forEach((k) => { if (!ids[k]) delete keep[k]; }); G.raw(KEEP, JSON.stringify(keep));
+      if (back.length) {
+        const t = st.data.items.filter((i) => back.includes(i.id)).map((i) => i.title.slice(0, 14)).join('、');
+        G.raw('kadai-reverted', JSON.stringify([...new Set([...reverted(), ...back])]));
+        G.toast(`ポータルでまだ未提出なので、未完了に戻しました：${t}`, null);
+      }
     } catch (e) {
       if (e.wrong) { G.raw(KEY, null); st.loading = false; lockScreen(e.message); return; }
       if (G.cur === 'kadai') G.toast(navigator.onLine ? e.message : 'オフラインです。前回の内容を表示しています');

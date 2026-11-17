@@ -266,3 +266,6 @@ label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .gl-sub{font-size:16px;opacity:.9;margin-top:10px;line-height:1.6}
 .gl-wx{font-size:15px;opacity:.85;margin-top:14px}
 .gl-tap{font-size:13px;opacity:.6;margin-top:40px}
+.banner .rv{display:flex;align-items:center;gap:8px;margin-top:8px}
+.banner .rv span{flex:1;min-width:0;font-weight:700}
+.banner .rv .btn,.banner .btn{font-size:12px;padding:6px 8px}

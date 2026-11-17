@@ -6,7 +6,8 @@
   const saveConf = (c) => G.save(KEY, c);
 
   async function post(topic, title, msg, at) {
-    const q = new URLSearchParams({ title, tags: 'train' });
+    // priority=high：Android の ntfy ではポップアップ（画面上部）で出る
+    const q = new URLSearchParams({ title, tags: 'train', priority: 'high' });
     if (at) q.set('at', String(Math.floor(at / 1000)));
     // 本文はふつうの文字列で送る（ブラウザから送れる形）
     const r = await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}?${q}`, { method: 'POST', body: msg });
