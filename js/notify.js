@@ -5,13 +5,26 @@
   const conf = () => G.load(KEY, { on: false, topic: '', lead: 10 });
   const saveConf = (c) => G.save(KEY, c);
 
+  // ntfy のトピック名に使えるのは半角英数字と - _ だけ（1〜64文字）
+  const TOPIC_RE = /^[A-Za-z0-9_-]{1,64}$/;
+  function topicError(t) {
+    if (!t) return 'トピック名を入れてください';
+    if (!TOPIC_RE.test(t)) return 'トピック名に使えるのは半角の英数字と「-」「_」だけです（日本語・空白・記号は使えません）';
+    return '';
+  }
+  const randomTopic = () => 'godlife-' + Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(36).padStart(2, '0')).join('').slice(0, 10);
   async function post(topic, title, msg, at) {
     // priority=high：Android の ntfy ではポップアップ（画面上部）で出る
     const q = new URLSearchParams({ title, tags: 'train', priority: 'high' });
     if (at) q.set('at', String(Math.floor(at / 1000)));
     // 本文はふつうの文字列で送る（ブラウザから送れる形）
-    const r = await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}?${q}`, { method: 'POST', body: msg });
-    if (!r.ok) throw new Error('ntfy ' + r.status);
+    let r;
+    try { r = await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}?${q}`, { method: 'POST', body: msg }); }
+    catch (e) { throw new Error('ntfy.sh につながりませんでした（電波・機内モード・広告ブロックなどを確認）'); }
+    if (!r.ok) {
+      let why = ''; try { why = (await r.json()).error || ''; } catch (e) {}
+      throw new Error(`ntfy がエラーを返しました（${r.status}${why ? '：' + why : ''}）`);
+    }
   }
 
   // これから先36時間の「家を出る」「大学を出る」を探す
@@ -39,7 +52,7 @@
 
   // 予約（同じ出発は1回だけ。予約できるのは3日先まで）
   async function schedule() {
-    const c = conf(); if (!c.on || !c.topic) return 0;
+    const c = conf(); if (!c.on || topicError(c.topic)) return 0;
     const now = Date.now();
     const sent = G.load(SENT, {});
     Object.keys(sent).forEach((k) => { if (sent[k] < now - 864e5) delete sent[k]; });
@@ -59,8 +72,10 @@
     const c = conf();
     G.openEditor(`<h3>🔔 出発前の通知</h3>
       <p>アプリを開いたときに、次に家（大学）を出る時刻の少し前の通知を、無料の通知アプリ「ntfy」に予約します。アプリを閉じていても ntfy から届きます。</p>
-      <label class="ocr-mode" style="color:var(--text);font-size:15px"><input type="checkbox" id="nfOn"${c.on ? ' checked' : ''}> 通知を使う</label>
-      <label class="f">ntfy のトピック名（課題の通知と同じものでOK）</label><input id="nfTopic" value="${G.esc(c.topic)}" placeholder="例：reitaku-xxxx-8392" autocapitalize="off" autocomplete="off">
+      <label class="ocr-mode" style="color:var(--text);font-size:15px"><input type="checkbox" id="nfOn"${c.on ? ' checked' : ''}> 出発前の通知を予約する（オフにすると予約しません）</label>
+      <label class="f">ntfy のトピック名</label><input id="nfTopic" value="${G.esc(c.topic)}" placeholder="例：godlife-k7x2m9q4pz" autocapitalize="off" autocomplete="off" spellcheck="false">
+      <button class="btn full" id="nfGen">🎲 トピック名を作る</button>
+      <p>トピック名は、通知を受け取る「チャンネルの名前」です。ntfy アプリで同じ名前を「＋」から購読すると、そこに届きます。半角の英数字と「-」「_」だけ使えます。名前を知っている人は誰でも読めるので、推測されにくい名前にしてください（課題の通知の NTFY_TOPIC と同じものにすると1か所で受け取れます）。</p>
       <label class="f">何分前に知らせるか</label><select id="nfLead">${[5, 10, 15, 20, 30].map((m) => `<option value="${m}"${m === c.lead ? ' selected' : ''}>${m}分前</option>`).join('')}</select>
       <p>・トピック名はこの端末にだけ保存します。ntfy.sh に送るのは通知の文（出発時刻・授業名）だけです。<br>・予約したあとに時刻表の設定などを変えると、前の通知も届くことがあります。</p>
       <button class="btn pri full" id="nfSave">保存して予約する</button>
@@ -68,16 +83,21 @@
       <button class="btn full" id="nfClose">閉じる</button>`, (root) => {
       const q = (s) => root.querySelector(s);
       const read = () => ({ on: q('#nfOn').checked, topic: q('#nfTopic').value.trim(), lead: Number(q('#nfLead').value) });
+      q('#nfGen').onclick = () => {
+        const t = randomTopic(); q('#nfTopic').value = t;
+        if (navigator.clipboard) navigator.clipboard.writeText(t).then(() => G.toast('作ってコピーしました：' + t + '（ntfy アプリで購読してください）'), () => {});
+      };
       q('#nfSave').onclick = async () => {
         const n = read(); saveConf(n); G.closeEditor();
         if (!n.on) { G.toast('通知をオフにしました'); return; }
-        if (!n.topic) { G.toast('トピック名を入れてください'); return; }
+        if (topicError(n.topic)) { G.toast(topicError(n.topic)); return; }
         const k = await schedule(); G.toast(k ? `${k}件の通知を予約しました` : '保存しました（予約する出発はまだありません）');
       };
       q('#nfTest').onclick = async () => {
-        const n = read(); if (!n.topic) { G.toast('トピック名を入れてください'); return; }
-        try { await post(n.topic, 'GOD Life', 'テスト通知です。届いていればOK'); G.toast('送りました。ntfy に届いたか確認してください'); }
-        catch (e) { G.toast('送れませんでした（ネットにつながっているか確認してください）'); }
+        const n = read(); if (topicError(n.topic)) { G.toast(topicError(n.topic)); return; }
+        G.toast('送っています…');
+        try { await post(n.topic, 'GOD Life', 'テスト通知です。届いていればOK'); G.toast(`送りました。ntfy アプリで「${n.topic}」を購読していれば届きます`); }
+        catch (e) { G.toast('送れませんでした：' + e.message); }
       };
       q('#nfClose').onclick = G.closeEditor;
     });
