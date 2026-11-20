@@ -269,3 +269,8 @@ label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .banner .rv{display:flex;align-items:center;gap:8px;margin-top:8px}
 .banner .rv span{flex:1;min-width:0;font-weight:700}
 .banner .rv .btn,.banner .btn{font-size:12px;padding:6px 8px}
+.ms-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.ms-row>div{flex:1;min-width:0}
+.ms-row small{display:block;color:var(--sub);font-size:12px}
+.ms-row .btn{font-size:12px;padding:6px 10px}
+[hidden]{display:none!important}

@@ -63,6 +63,54 @@
   }
   const BUSCFG = { walk: 15, transfer: 3 }; // 家 ⇄ 並木大橋の徒歩、バスと電車の乗り換え
 
+  /* ---- マイ駅（特定の日だけ別の駅を使う） ---- */
+  // 常磐線の駅：荒川沖を0・柏を1とした位置（普通列車の所要時間から推定）。土浦は荒川沖の5分先
+  const JOBAN = {
+    tsuchiura: { name: '土浦', ext: 5 },
+    hitachino: { name: 'ひたち野うしく', f: 3 / 34 },
+    ushiku: { name: '牛久', f: 7 / 34 },
+    ryugasaki: { name: '龍ケ崎市', f: 11 / 34 },
+    fujishiro: { name: '藤代', f: 15 / 34 },
+    toride: { name: '取手', f: 20 / 34 },
+    tennodai: { name: '天王台', f: 24 / 34, noRapid: true },
+    abiko: { name: '我孫子', f: 28 / 34 },
+  };
+  const MKEY = 'gl.mySt';
+  const mySt = () => G.load(MKEY, []);
+  const stName = (st) => (st.joban ? JOBAN[st.joban].name : st.name);
+  // 荒川沖発 araDep・柏着 kArr の上りが、駅 st を出る時刻（止まらなければ null）
+  function upAt(st, araDep, kArr, type) {
+    const J = JOBAN[st.joban];
+    if (J.ext) return araDep - J.ext;
+    if (J.noRapid && /快速/.test(type)) return null;
+    return Math.round(araDep + (kArr - araDep) * J.f);
+  }
+  // 柏発 kDep・荒川沖着 araArr の下りが、駅 st に着く時刻
+  function downAt(st, kDep, araArr, type, dest) {
+    const J = JOBAN[st.joban];
+    if (J.ext) return /荒川沖/.test(dest) ? null : araArr + J.ext;
+    if (J.noRapid && /快速/.test(type)) return null;
+    return Math.round(kDep + (araArr - kDep) * (1 - J.f));
+  }
+  // その日の「通学の変更」（カレンダーの予定に付ける）。kind = 'go' | 'back'
+  function overrideOn(date, kind) {
+    if (!date || !G.calendar || !G.calendar.commuteFor) return null;
+    const c = G.calendar.commuteFor(G.ymd(date));
+    const x = c && c[kind]; if (!x) return null;
+    const st = mySt().find((m) => m.id === x.id);
+    return st ? { ...x, st } : null;
+  }
+  // 常磐線以外の駅：予定に入れた時刻（Yahoo!乗換案内で調べたもの）で1本だけ
+  const hm = (v) => { if (!v) return null; const [h, m] = v.split(':').map(Number); return h * 60 + m; };
+  function manualOption(dir, ov) {
+    const lv = hm(ov.leave), ar = hm(ov.arrive);
+    if (lv == null || ar == null) return [];
+    const nm = stName(ov.st);
+    return [{ leave: lv, arrive: ar, search: null, manual: true, via: ov.st,
+      legs: [[nm, dir === 'school' ? `${fmt(lv)} 出発` : `${fmt(ar)} 着`, 'Yahoo!乗換案内で調べた経路']],
+      steps: [{ arr: null, t: lv, do: dir === 'school' ? `${ov.st.label || nm}を出て大学へ（Yahoo!で調べた経路）` : `大学を出て${nm}方面へ（Yahoo!で調べた経路）` }] }];
+  }
+
   const { pad, fmtMin: fmt, ymd } = G;
 
   function autoDayType(date) {
@@ -132,6 +180,23 @@
 
   // 帰り：大学 → 南柏 → 柏（乗換）→ 荒川沖 → 家。from で途中駅から乗る
   function homeOptions(tt, from = 'univ') {
+    // この日だけ別の駅まで（マイ駅）
+    const ov = from !== 'train' && from !== 'ara' ? overrideOn(bDate, 'back') : null;
+    if (ov && !ov.st.joban) return from === 'univ' ? manualOption('home', ov) : [];
+    if (ov) return prune(homeOptionsRaw(tt, from).map((o) => toStation(o, ov)).filter(Boolean));
+    return homeOptionsRaw(tt, from);
+  }
+  // 荒川沖行きの候補を、マイ駅までに置きかえる
+  function toStation(o, ov) {
+    if (!o._k) return o;
+    const [kDep, araArr, type, dest] = o._k;
+    const a = downAt(ov.st, kDep, araArr, type, dest); if (a == null) return null;
+    const nm = stName(ov.st);
+    const legs = o.legs.slice(0, -1).concat([[nm, fmt(a) + ' 着', `${ov.st.how} ${ov.st.access}分`]]);
+    const steps = o.steps.slice(0, -1).concat([{ arr: 'home', t: a, do: `${nm} ${fmt(a)} 着 → ${ov.st.how}で${ov.st.label || '目的地'}へ（${ov.st.access}分）` }]);
+    return { ...o, arrive: a + ov.st.access, legs, steps, via: ov.st, search: { ...o.search, to: nm } };
+  }
+  function homeOptionsRaw(tt, from = 'univ') {
     const out = [];
     if (from === 'train') { // 柏→荒川沖の電車に乗っている
       for (const [kDep, type, dest, araArr] of tt.chuDown) out.push({
@@ -149,6 +214,7 @@
       ];
       if (from === 'kashiwa') {
         out.push({
+          _k: [kDep, araArr, type, dest],
           leave: kDep - CFG.margin, arrive: inLeg(tt, araArr).arrive,
           search: { from: '柏', to: '荒川沖', dep: kDep },
           legs: [['柏', fmt(kDep) + ' 発', `${type} ${dest}行`], ['荒川沖', fmt(araArr) + ' 着', inLeg(tt, araArr).label]],
@@ -164,6 +230,7 @@
       const fri = from === 'univ' && friOn() && bDate && bDate.getDay() === FRI.dow && mk === FRI.mk;
       if (fri) walk = mk - CFG.margin - FRI.leave;
       out.push({
+        _k: [kDep, araArr, type, dest],
         leave: mk - walk - CFG.margin,
         arrive: inLeg(tt, araArr).arrive,
         search: { from: '南柏', to: '荒川沖', dep: mk },
@@ -215,9 +282,27 @@
       }
       return prune(out);
     }
+    // この日だけ別の駅から（マイ駅）。常磐線以外の駅は、予定に入れた時刻（Yahoo!で調べたもの）を使う
+    const ov = from === 'home' ? overrideOn(bDate, 'go') : null;
+    if (ov && !ov.st.joban) return manualOption('school', ov);
     for (const [araDep, type, dest, kArr] of tt.chuUp) {
       const mk = tt.mkUp.find((u) => u - CFG.mkKashiwa >= kArr + CFG.transfer);
       if (mk === undefined) continue;
+      if (ov) {
+        const d = upAt(ov.st, araDep, kArr, type); if (d == null) continue;
+        const nm = stName(ov.st), lv = d - ov.st.access - CFG.margin;
+        out.push({
+          leave: lv, arrive: mk + CFG.walkUniv, via: ov.st,
+          search: { from: nm, to: '南柏', dep: d },
+          legs: [[nm, fmt(d) + ' 発', `${type} ${dest}行`], ['柏', `${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発`, '各駅停車'], ['南柏', fmt(mk) + ' 着', '徒歩 ' + CFG.walkUniv + '分']],
+          steps: [{ arr: null, t: lv, do: `${nm}駅まで${ov.st.how}（${ov.st.access}分）` },
+            { arr: 'kashiwa', t: d, do: `${nm} ${fmt(d)} 発 ${type} ${dest}行に乗る` },
+            { arr: 'kashiwa', t: kArr, do: `柏 ${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗り換え` },
+            { arr: 'mk', t: mk - CFG.mkKashiwa, do: `柏 ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗る` },
+            { arr: 'univ', t: mk, do: `南柏 ${fmt(mk)} 着 → 大学まで歩く（${CFG.walkUniv}分）` }],
+        });
+        continue;
+      }
       const out1 = from === 'home' ? outLeg(tt, araDep) : null;
       if (from === 'home' && !out1) continue; // 間に合うバスがない
       out.push({
@@ -306,7 +391,7 @@
     const isTomorrow = ymd(D) !== ymd(now);
     const nowAbs = (now - D) / 60000;
     const prev = new Date(D); prev.setDate(prev.getDate() - 1);
-    const sp = isSpecialT(dir, T, from);
+    const sp = isSpecialT(dir, T, from) && !overrideOn(D, 'go');
     let all, ok;
     if (moveOnly(dir, from)) { all = [moveOption(dir, T - (dir === 'school' ? CFG.walkUniv : HM()))]; ok = all; }
     else {
@@ -337,6 +422,29 @@
       <div class="sub">${o.legs.map(([st, t]) => `${st} ${t.split(' → ').pop()}`).join(' ・ ')}</div>`;
     return o.search ? `<li><a class="card" style="display:block;color:inherit;text-decoration:none" href="${routeUrl(o, base)}">${inner}</a></li>` : `<li><div class="card">${inner}</div></li>`;
   };
+
+  // マイ駅の追加
+  function addMySt() {
+    G.openEditor(`<h3>マイ駅を追加</h3>
+      <label class="f">駅</label><select id="msSt">${Object.entries(JOBAN).map(([k, j]) => `<option value="${k}">${j.name}（常磐線）</option>`).join('')}<option value="">その他の駅（駅名を入れる）</option></select>
+      <div id="msOther" hidden><label class="f">駅名</label><input id="msName" placeholder="例：つくば"></div>
+      <label class="f">どこからその駅へ行く？（予定ではここを出る／ここに着く）</label><input id="msLabel" placeholder="例：友達の家・バイト先">
+      <div class="row2"><div><label class="f">その駅までの手段</label><select id="msHow">${['徒歩', '自転車', 'バス', '車'].map((x) => `<option>${x}</option>`).join('')}</select></div>
+      <div><label class="f">かかる時間（分）</label><input id="msAcc" type="number" min="0" max="120" value="10"></div></div>
+      <p class="muted">常磐線（土浦〜我孫子）の駅は、荒川沖・柏の時刻表から推定して計算します（1〜2分ずれることがあります）。その他の駅は、予定に Yahoo!乗換案内で調べた時刻を入れて使います。</p>
+      <button class="btn pri full" id="msSave">追加</button><button class="btn full" id="msCancel">閉じる</button>`, (root) => {
+      const q = (x) => root.querySelector(x);
+      q('#msSt').onchange = () => { q('#msOther').hidden = !!q('#msSt').value; };
+      q('#msSave').onclick = () => {
+        const j = q('#msSt').value, name = q('#msName').value.trim().replace(/駅$/, '');
+        if (!j && !name) { q('#msName').focus(); return; }
+        const m = { id: 's' + Date.now().toString(36), joban: j || null, name: j ? JOBAN[j].name : name, label: q('#msLabel').value.trim(),
+          how: q('#msHow').value, access: Math.max(0, Number(q('#msAcc').value) || 0) };
+        G.save(MKEY, [...mySt(), m]); G.closeEditor(); render(); G.toast(`マイ駅に ${stName(m)}駅 を追加しました`);
+      };
+      q('#msCancel').onclick = G.closeEditor;
+    });
+  }
 
   /* ---- 現在地（手で選ぶ・GPS） ---- */
   // 端末で登録し直した位置（家、または駅の位置の手直し）。{ home: {lat,lng}, kashiwa: {...} }
@@ -494,6 +602,8 @@
       v.innerHTML = h; return;
     }
     const from = PLACES[fromK].name;
+    // 通学の変更がある日は、家ではなくその場所（マイ駅）の名前
+    const fromN = (base) => { const o = fromK === 'home' && S.dir === 'school' ? overrideOn(base, 'go') : null; return o ? (o.st.label || stName(o.st) + '駅') : from; };
     let plan, mainHtml, listTitle, listItems;
     if (fromK === 'train') {
       // 車内：今乗っている電車を時刻表から推定して、着く時刻を出す
@@ -527,7 +637,7 @@
         mainHtml = `<section class="card lc-main${left < 5 ? ' urgent' : ''}">
           <div class="label">${dl}${fmt(T)}までに${to}に着くには${plan.special ? `<br><b>2限の特例：${SPECIAL.from} ${fmt(SPECIAL.dep)} 発までの電車</b>` : ''}</div>
           <div class="lc-count">${fmt(main.leave)}</div>
-          <div class="lc-times"><div>までに${from}を出る　${left < 0 ? '<b class="late">もう間に合いません</b>' : `あと <span>${G.dur(left)}</span>`}</div>
+          <div class="lc-times"><div>までに${fromN(plan.base)}を出る　${left < 0 ? '<b class="late">もう間に合いません</b>' : `あと <span>${G.dur(left)}</span>`}</div>
           <div>${to}に <b>${fmt(main.arrive)}</b> 着</div></div>
           ${legsHtml(main)}${jrLink(main, plan.base)}</section>`;
       }
@@ -547,9 +657,9 @@
         const left = main.leave - plan.nowAbs;
         const mins = Math.floor(left), secs = Math.floor((left - mins) * 60);
         mainHtml = `<section class="card lc-main${left < 5 ? ' urgent' : ''}">
-          <div class="label">${from}を出るまで</div>
+          <div class="label">${fromN(plan.base)}を出るまで</div>
           <div class="lc-count">${left >= 60 ? `${Math.floor(mins / 60)}<small>時間</small>${mins % 60}` : mins}<small>分</small><span class="sec">${pad(Math.max(0, secs))}秒</span></div>
-          <div class="lc-times"><div><span>${main.tomorrow ? '明日 ' : ''}${fmt(main.leave)}</span>に${from}を出る</div>
+          <div class="lc-times"><div><span>${main.tomorrow ? '明日 ' : ''}${fmt(main.leave)}</span>に${fromN(plan.base)}を出る</div>
           <div>${to}に <b>${fmt(main.arrive)}</b> 着</div></div>
           ${legsHtml(main)}${jrLink(main, plan.base)}</section>`;
       }
@@ -569,6 +679,12 @@
       <div class="seg" style="margin:0"><button data-sp="1" class="${specialOn() ? 'on' : ''}">オン</button><button data-sp="0" class="${specialOn() ? '' : 'on'}">オフ</button></div></div>
       <div class="set-row" style="margin:12px 0 0"><span>金曜の特例（3限のあと急いで歩いて 南柏 ${fmt(FRI.mk)} 発に乗る）</span>
       <div class="seg" style="margin:0"><button data-fri="1" class="${friOn() ? 'on' : ''}">オン</button><button data-fri="0" class="${friOn() ? '' : 'on'}">オフ</button></div></div></div>`;
+    // マイ駅（特定の日だけ別の駅を使う）
+    const ms = mySt();
+    h += `<div class="gh">マイ駅（特定の日だけ使う駅）</div><div class="card">
+      ${ms.length ? ms.map((m) => `<div class="ms-row"><div><b>${G.esc(stName(m))}駅</b>${m.joban ? '' : '<small>（常磐線以外）</small>'}<small>${G.esc(m.label || '')}${m.label ? 'から' : ''}${G.esc(m.how)} ${m.access}分</small></div><button class="btn" data-msdel="${m.id}">消す</button></div>`).join('')
+        : '<p class="muted" style="margin-top:0">まだありません。登録した駅は、カレンダーの予定の「通学の変更」で日付ごとに選べます。</p>'}
+      <button class="btn full" data-msadd="1">＋ マイ駅を追加</button></div>`;
     h += `<div class="foot"><button class="daytype" id="lcDay">${(S.dayMode === 'auto' ? '' : '手動：') + { wk: '平日', ho: '土休日' }[plan.type]}ダイヤ</button><br>
       タップで「自動→平日→土休日」を切り替え<br>時刻表どおりの表示です（遅延は反映されません）<br>出典：JR東日本 駅時刻表（南柏 2026年10月版／柏・荒川沖 2026年11月版）</div>`;
     v.innerHTML = h;
@@ -583,6 +699,8 @@
     else if (b.dataset.mode) { S.mode = b.dataset.mode; delete S.arriveDay; }
     else if (b.dataset.p) { S.arrive[S.dir] = b.dataset.p; delete S.arriveDay; }
     else if (b.dataset.rain) { S.rain = b.dataset.rain; }
+    else if (b.dataset.msadd) { addMySt(); return; }
+    else if (b.dataset.msdel) { G.save(MKEY, mySt().filter((m) => m.id !== b.dataset.msdel)); render(); return; }
     else if (b.dataset.fri) { S.fri = b.dataset.fri === '1'; }
     else if (b.dataset.sp) { S.special2 = b.dataset.sp === '1'; }
     else if (b.dataset.k) { CFG[b.dataset.k] = S[b.dataset.k] = Number(b.dataset.v); }
@@ -628,7 +746,7 @@
     tr.marks ||= [];
     if (i <= cur.done) { tr.marks.pop(); G.save(TKEY, tr); return; } // 終わった手順をもう一度タップ → 1つ戻す
     const st = cur.o.steps[i];
-    if (!st || !st.arr || st.arr === (tr.dir === 'school' ? 'univ' : 'home')) { tripEnd(); return 'end'; }
+    if (!st || st.arr === (tr.dir === 'school' ? 'univ' : 'home')) { tripEnd(); return 'end'; }
     tr.marks.push({ from: st.arr, at: now.getTime(), prefix: cur.o.steps.slice(0, i + 1).map(({ arr, t, do: d }) => ({ arr, t, do: d })) });
     G.save(TKEY, tr);
   }
@@ -646,7 +764,8 @@
     }
     const nowAbs = plan.nowAbs + (now - dep) / 60000 + 1;
     const m = tr.marks && tr.marks[tr.marks.length - 1];
-    if (m) {
+    if (m && !m.from) done = m.prefix.length - 1; // マイ駅など：組み直さずに、そこまで終わったことにする
+    if (m && m.from) {
       // タップした時刻に、その駅から出発し直したとして探す
       const p2 = nowPlan(tr.dir, new Date(m.at), m.from);
       const o2 = p2.opts[0];
@@ -660,7 +779,7 @@
     return { dir: tr.dir, dep, o, base: plan.base, nowAbs, done, boarded: tr.train != null ? tr.train : null };
   }
 
-  G.commute = { wentToday, rainMode: () => S.rain || 'auto', yahooUrl, rainy, HOLIDAYS, dir: () => S.dir, onboardList, board, flipDir, autoLocate, autoOn, PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
+  G.commute = { JOBAN, mySt, stName, overrideOn, wentToday, rainMode: () => S.rain || 'auto', yahooUrl, rainy, HOLIDAYS, dir: () => S.dir, onboardList, board, flipDir, autoLocate, autoOn, PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
   // 秒まで数えるので、表示中は1秒ごとに描き直す（入力中は止める）
   G.reg('commute', { title: '通学', render, tick: 1, skipTick: () => document.activeElement && document.activeElement.id === 'lcArrive' });
 })();

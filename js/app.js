@@ -53,7 +53,7 @@
   G.$('mLogout').onclick = () => { sheet.classList.remove('show'); G.kadai.logout(); G.go('kadai'); };
 
   // バックアップ（時間割・通学設定・教室の追記・完了印）。合言葉は含めない
-  const BK = ['gl.classes', 'gl.classOpt', 'gl.commute', 'gl.roomsLocal', 'kadai-done', 'gl.theme', 'gl.placePos', 'gl.events', 'gl.ntfy', 'gl.glance'];
+  const BK = ['gl.classes', 'gl.classOpt', 'gl.commute', 'gl.roomsLocal', 'kadai-done', 'gl.theme', 'gl.placePos', 'gl.events', 'gl.ntfy', 'gl.glance', 'gl.mySt'];
   G.$('mBackup').onclick = () => {
     const o = {}; BK.forEach((k) => { const v = G.raw(k); if (v != null) o[k] = v; });
     const txt = 'GODLIFE1:' + btoa(unescape(encodeURIComponent(JSON.stringify(o))));
