@@ -173,7 +173,8 @@
     const app = `conditions?${ft}&d=${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}&t=${pad(hh)}${pad(mn)}&type=1&prop=y`;
     const web = `https://transit.yahoo.co.jp/search/result?${ft}&y=${d.getFullYear()}&m=${pad(d.getMonth() + 1)}&d=${pad(d.getDate())}` +
       `&hh=${pad(hh)}&m1=${Math.floor(mn / 10)}&m2=${mn % 10}&type=1`;
-    return isAndroid ? appIntent(app, web) : web;
+    // アプリ直接（yjtransit://）だと時刻と「到着時刻指定」が伝わらないので、経路検索は Web 版で開く
+    void app; return web;
   }
   // 好きな駅どうしを Yahoo!乗換案内で調べる（type 1=出発時刻、4=到着時刻）
   function yahooUrl(from, to, date, hhmm, type) {
@@ -182,7 +183,8 @@
     const app = `conditions?${ft}&d=${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}&t=${pad(hh)}${pad(mn)}&type=${type}`;
     const web = `https://transit.yahoo.co.jp/search/result?${ft}&y=${d.getFullYear()}&m=${pad(d.getMonth() + 1)}&d=${pad(d.getDate())}` +
       `&hh=${pad(hh)}&m1=${Math.floor(mn / 10)}&m2=${mn % 10}&type=${type}`;
-    return isAndroid ? appIntent(app, web) : web;
+    // アプリ直接（yjtransit://）だと時刻と「到着時刻指定」が伝わらないので、経路検索は Web 版で開く
+    void app; return web;
   }
   const INFO_WEB = 'https://transit.yahoo.co.jp/diainfo/area/4';
   const infoLink = isAndroid ? appIntent('diainfo', INFO_WEB) : INFO_WEB;
