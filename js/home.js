@@ -97,11 +97,11 @@
       if (p.go && p.go.manualNeeded) out.push(row(`G.go('class')`, `${G.esc(e.title)}（📍${nm}駅）`, '時刻を入れてください', 'カレンダーの予定に、Yahoo!乗換案内で調べた時刻を入れると出ます'));
       else if (go && min <= go.leave + 30) {
         const left = go.leave - min;
-        out.push(row(`G.go('class')`, `${G.esc(e.title)} ${G.esc(e.start)}（📍${nm}駅）に間に合うには${est}`, `${f(go.leave)} に家を出る`,
+        out.push(row(`G.go('class')`, `${G.esc(e.title)}${e.start ? ' ' + G.esc(e.start) : ''}（📍${nm}駅）に間に合うには${est}`, `${f(go.leave)} に家を出る`,
           `${left < 0 ? '⚠ 出発時刻を過ぎています' : 'あと' + G.dur(left)}・${G.esc(G.commute.placeName(p.st))}に ${f(go.arrive)} 着${p.go.after ? `<br>1本後：${f(p.go.after.leave)} 出発 → ${f(p.go.after.arrive)} 着` : ''}`, left < 0));
       }
       if (back && min <= back.leave + 60) {
-        out.push(row(`G.go('class')`, `${G.esc(e.title)}のあと（${G.esc(e.end)} 終了）に帰るなら${est}`, `${f(back.leave)} に出る`,
+        out.push(row(`G.go('class')`, `${G.esc(e.title)}のあと${e.end ? `（${G.esc(e.end)} 終了）` : ''}に帰るなら${est}`, `${f(back.leave)} に出る`,
           `家に ${f(back.arrive)} 着${p.back.after ? `<br>1本後：${f(p.back.after.leave)} 出る → 家 ${f(p.back.after.arrive)} 着` : ''}`));
       }
     }

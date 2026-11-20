@@ -134,9 +134,17 @@
   // 常磐線以外の駅（key なし）は、予定に入れた時刻（Yahoo!で調べたもの）をそのまま使う
   function destPlan(st, D, kind, T, manual) {
     if (!st.key) {
-      const lv = hm(manual && manual.leave), ar = hm(manual && manual.arrive);
-      if (lv == null || ar == null) return { main: null, manualNeeded: true };
-      return { main: { leave: lv, arrive: ar, manual: true, legs: [[stName(st), kind === 'go' ? '経由' : '発', 'Yahoo!乗換案内で調べた経路']], steps: [] }, before: null, after: null };
+      // 予定に入れた駅の時刻（Yahoo!で調べたもの）：行き＝荒川沖を出る・駅に着く、帰り＝駅を出る・荒川沖に着く
+      const a = hm(manual && manual.leave), b = hm(manual && manual.arrive);
+      if (a == null || b == null) return { main: null, manualNeeded: true };
+      const tt = TIMETABLE[typeOf(D)], nm = stName(st);
+      if (kind === 'go') {
+        const o1 = outLeg(tt, a);
+        if (!o1) return { main: null, manualNeeded: false, noBus: true };
+        return { main: { leave: o1.leave, arrive: b + st.access, manual: true, legs: [['荒川沖', fmt(a) + ' 発', 'Yahoo!で調べた経路'], [nm, fmt(b) + ' 着', `${st.how} ${st.access}分`]], steps: [] }, before: null, after: null };
+      }
+      const inl = inLeg(tt, b);
+      return { main: { leave: a - st.access - CFG.margin, arrive: inl.arrive, manual: true, legs: [[nm, fmt(a) + ' 発', 'Yahoo!で調べた経路'], ['荒川沖', fmt(b) + ' 着', inl.label]], steps: [] }, before: null, after: null };
     }
     rbDate(D);
     const all = (kind === 'go' ? destGo(st, D) : destBack(st, D)).sort((a, b) => a.leave - b.leave);

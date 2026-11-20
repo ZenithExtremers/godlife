@@ -93,12 +93,14 @@
   // 予定 e の行き・帰りの計算（開始時刻に着く便・終了後に乗る便）
   function destPlans(e, day) {
     const st = e.dest && stOf(e.dest);
-    if (!st || e.allDay) return null;
-    const D = parse(day), mm = (v) => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
+    if (!st) return null;
+    const manual = !st.key; // 常磐線以外：入れた時刻で計算するので、開始・終了時刻がなくてもいい
+    if (e.allDay && !manual) return null;
+    const D = parse(day), mm = (v) => { if (!v) return 0; const [h, m] = v.split(':').map(Number); return h * 60 + m; };
     return {
       st,
-      go: e.start ? G.commute.destPlan(st, D, 'go', mm(e.start), { leave: e.dL, arrive: e.dA }) : null,
-      back: e.end ? G.commute.destPlan(st, D, 'back', mm(e.end), { leave: e.bL, arrive: e.bA }) : null,
+      go: e.start || (manual && e.dL) ? G.commute.destPlan(st, D, 'go', mm(e.start), { leave: e.dL, arrive: e.dA }) : null,
+      back: e.end || (manual && e.bL) ? G.commute.destPlan(st, D, 'back', mm(e.end), { leave: e.bL, arrive: e.bA }) : null,
     };
   }
   function destNote(e, day) {
@@ -114,11 +116,12 @@
     return `<label class="f">行き先（部活など、大学の代わりに行く駅）</label>
       <select id="evDest"><option value="">なし</option>${ms.map((m) => `<option value="${m.id}"${m.id === e.dest ? ' selected' : ''}>${G.esc(G.commute.stName(m))}駅${m.label ? '（' + G.esc(m.label) + '）' : ''}</option>`).join('')}</select>
       <small class="muted" id="evDestHint">開始時刻に着く電車と、終了時刻のあとに乗る電車を計算します（家側は荒川沖のまま）</small>
-      <div id="evDestM" hidden><small class="muted">常磐線以外の駅なので、Yahoo!乗換案内で調べた時刻を入れてください</small>
+      <div id="evDestM" hidden><small class="muted">常磐線以外の駅なので、Yahoo!乗換案内で調べて時刻を入れてください</small>
         <a class="btn full" id="evDgY" target="_blank" rel="noopener" style="display:block;margin:4px 0">🚃 行きの経路を調べる</a>
-        <div class="row2"><div><small class="muted">家を出る時刻</small><input id="evDL" type="time" value="${e.dL || ''}"></div><div><small class="muted">着く時刻</small><input id="evDA" type="time" value="${e.dA || ''}"></div></div>
+        <div class="row2"><div><small class="muted">荒川沖を出る時刻</small><input id="evDL" type="time" value="${e.dL || ''}"></div><div><small class="muted">駅に着く時刻</small><input id="evDA" type="time" value="${e.dA || ''}"></div></div>
         <a class="btn full" id="evDbY" target="_blank" rel="noopener" style="display:block;margin:4px 0">🚃 帰りの経路を調べる</a>
-        <div class="row2"><div><small class="muted">出る時刻</small><input id="evBL" type="time" value="${e.bL || ''}"></div><div><small class="muted">家に着く時刻</small><input id="evBA" type="time" value="${e.bA || ''}"></div></div></div>`;
+        <div class="row2"><div><small class="muted">駅を出る時刻</small><input id="evBL" type="time" value="${e.bL || ''}"></div><div><small class="muted">荒川沖に着く時刻</small><input id="evBA" type="time" value="${e.bA || ''}"></div></div>
+        <small class="muted">Yahoo!乗換案内の結果に出ている駅の時刻を、そのまま入れてください。家を出る時刻・家に着く時刻は、自転車（雨の日はバス）の時間を足して計算します。</small></div>`;
   }
   function bindDestForm(root, getDay) {
     const q = (x) => root.querySelector(x);
@@ -128,11 +131,12 @@
       q('#evDestM').hidden = !st || !!st.key;
       if (st && !st.key) {
         const nm = G.commute.stName(st);
-        q('#evDgY').href = G.commute.yahooUrl('荒川沖', nm, d, q('#evS').value || '18:00', 4);
-        q('#evDbY').href = G.commute.yahooUrl(nm, '荒川沖', d, q('#evE').value || '21:00', 1);
+        // 行き：入れた「駅に着く時刻」→ 予定の開始時刻 の順で、その時刻に着く経路。帰り：「駅を出る時刻」→ 終了時刻
+        q('#evDgY').href = G.commute.yahooUrl('荒川沖', nm, d, q('#evDA').value || q('#evS').value || '18:00', 4);
+        q('#evDbY').href = G.commute.yahooUrl(nm, '荒川沖', d, q('#evBL').value || q('#evE').value || '21:00', 1);
       }
     };
-    ['#evDest', '#evD', '#evS', '#evE'].forEach((x) => q(x).addEventListener('change', upd)); upd();
+    ['#evDest', '#evD', '#evS', '#evE', '#evDA', '#evBL'].forEach((x) => { q(x).addEventListener('change', upd); q(x).addEventListener('input', upd); }); upd();
   }
   function readDestForm(root) {
     const q = (x) => root.querySelector(x);
