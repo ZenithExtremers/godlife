@@ -61,7 +61,7 @@
     }
     return { leave: araDep - HM() - CFG.margin, do: `荒川沖駅まで${HV()}（${HM()}分）` };
   }
-  const BUSCFG = { walk: 5, transfer: 3 }; // 家 ⇄ 並木大橋の徒歩、バスと電車の乗り換え
+  const BUSCFG = { walk: 15, transfer: 3 }; // 家 ⇄ 並木大橋の徒歩、バスと電車の乗り換え
 
   const { pad, fmtMin: fmt, ymd } = G;
 
@@ -159,7 +159,10 @@
       let mk = null;
       for (const d of tt.mkDown) if (d + CFG.mkKashiwa + CFG.transfer <= kDep) mk = d; else break;
       if (mk === null) continue;
-      const walk = from === 'univ' ? CFG.walkUniv : 0;
+      let walk = from === 'univ' ? CFG.walkUniv : 0;
+      // 金曜の特例：南柏 15:11 発には、3限のあと（14:50）に急いで歩いて乗る
+      const fri = from === 'univ' && friOn() && bDate && bDate.getDay() === FRI.dow && mk === FRI.mk;
+      if (fri) walk = mk - CFG.margin - FRI.leave;
       out.push({
         leave: mk - walk - CFG.margin,
         arrive: inLeg(tt, araArr).arrive,
@@ -171,7 +174,7 @@
         ],
         // 移動中の表示用（t はその時刻、do はその時にやること）
         steps: [
-          walk ? { arr: 'mk', t: mk - walk, do: `南柏駅まで歩く（${walk}分）` } : { arr: 'mk', t: mk - CFG.margin, do: '南柏駅のホームへ' },
+          walk ? { arr: 'mk', t: mk - walk - (fri ? CFG.margin : 0), do: fri ? `南柏駅まで急いで歩く（金曜の特例・${walk + CFG.margin}分）` : `南柏駅まで歩く（${walk}分）` } : { arr: 'mk', t: mk - CFG.margin, do: '南柏駅のホームへ' },
           { arr: 'kashiwa', t: mk, do: `南柏 ${fmt(mk)} 発 各駅停車に乗る` },
           { arr: 'kashiwa', t: mk + CFG.mkKashiwa, do: `柏で乗り換え → ${fmt(kDep)} 発 ${type} ${dest}行` },
           ...tail,
@@ -246,12 +249,17 @@
       legs: [[dir === 'school' ? '南柏' : '荒川沖', fmt(start) + ' 出発', what]], steps: [{ arr: dir === 'school' ? 'univ' : 'home', t: start, do: what }] };
   }
   // 同じ時刻以前に着く、もっと遅く出られる候補があれば、早く出るほうは省く
+  // 出発が同じかもっと遅くて、着くのが同じかもっと早い候補があれば省く（雨の日は同じバスから乗れる電車が何本もある）
   function prune(list) {
-    list.sort((a, b) => a.leave - b.leave);
-    return list.filter((o, i) => !list.slice(i + 1).some((x) => x.arrive <= o.arrive));
+    list.sort((a, b) => a.leave - b.leave || a.arrive - b.arrive);
+    return list.filter((o, i) => !list.some((x, j) => j !== i && x.leave >= o.leave && x.arrive <= o.arrive && (x.leave > o.leave || x.arrive < o.arrive || j < i)));
   }
   const shift = (o, k) => ({ ...o, leave: o.leave + k, arrive: o.arrive + k, onboard: o.onboard && o.onboard.map((x) => x + k), search: o.search && { ...o.search, dep: o.search.dep + k }, steps: o.steps.map((x) => ({ ...x, t: x.t + k })) });
-  const build = (dir, tt, from) => (dir === 'home' ? homeOptions(tt, from) : schoolOptions(tt, from));
+  // 金曜の特例（南柏 15:11 発に、14:50 に大学を出て急いで乗る）
+  const FRI = { dow: 5, mk: 15 * 60 + 11, leave: 14 * 60 + 50 };
+  const friOn = () => S.fri !== false;
+  let bDate = null; // 今計算している日（曜日ごとの特例に使う）
+  const build = (dir, tt, from, date) => { bDate = date || null; return dir === 'home' ? homeOptions(tt, from) : schoolOptions(tt, from); };
 
   // 「今すぐ」：これから乗れる候補（深夜0〜3時は前日のダイヤ扱い）。from を省くと家／大学から
   function nowPlan(dir, now, from = defFrom(dir)) {
@@ -263,12 +271,12 @@
     if (moveOnly(dir, from)) opts = [moveOption(dir, Math.ceil(nowMin))];
     else if (from === 'train') {
       // 今走っている電車（出発済みで、まだ着いていない）を時刻表から探す。遅れも見込んで到着後15分までは候補に残す
-      const run = build(dir, TIMETABLE[typeOf(svc)], from).filter((o) => o.onboard[0] <= nowMin + 1 && nowMin < o.onboard[1] + 15);
+      const run = build(dir, TIMETABLE[typeOf(svc)], from, svc).filter((o) => o.onboard[0] <= nowMin + 1 && nowMin < o.onboard[1] + 15);
       opts = run.reverse(); // 出発が新しい順（たいていは一番新しく出た電車に乗っている）
     } else {
-      const today = build(dir, TIMETABLE[typeOf(svc)], from);
+      const today = build(dir, TIMETABLE[typeOf(svc)], from, svc);
       opts = today.filter((o) => o.leave >= nowMin);
-      if (opts.length < 4) opts = opts.concat(build(dir, TIMETABLE[typeOf(next)], from).map((o) => shift(o, 1440)));
+      if (opts.length < 4) opts = opts.concat(build(dir, TIMETABLE[typeOf(next)], from, next).map((o) => shift(o, 1440)));
       opts = opts.slice(0, 4);
       // 1本前：出発時刻を過ぎたばかりの電車（3時間以内）
       const past = today.filter((o) => o.leave < nowMin && o.leave > nowMin - 180);
@@ -285,7 +293,8 @@
   // 「到着時刻を指定」：T（分）までに着く一番遅い電車（opts[0]）と、その1本前（before）・1本後（after）
   // dayOffset を渡すと「今日から何日後の T」に固定する（ホームで次の授業日を出すとき用）
   // 特例：2限に行くときは、10:40ちょうどに着く電車ではなく荒川沖 9:14 発に乗る
-  const SPECIAL = { period: 2, from: '荒川沖', dep: 9 * 60 + 14 };
+  // （9:14 発の1本後＝9:36 発。10:40 ちょうどに着く）
+  const SPECIAL = { period: 2, from: '荒川沖', dep: 9 * 60 + 36 };
   const specialOn = () => S.special2 !== false;
   const isSpecialT = (dir, T, from) => dir === 'school' && (from === 'home' || from === 'ara') && specialOn() && T === G.PERIODS.find((p) => p.n === SPECIAL.period).s;
   function arrivePlan(dir, now, T, dayOffset, from = defFrom(dir)) {
@@ -301,7 +310,7 @@
     let all, ok;
     if (moveOnly(dir, from)) { all = [moveOption(dir, T - (dir === 'school' ? CFG.walkUniv : HM()))]; ok = all; }
     else {
-      all = build(dir, TIMETABLE[typeOf(prev)], from).map((o) => shift(o, -1440)).concat(build(dir, TIMETABLE[typeOf(D)], from))
+      all = build(dir, TIMETABLE[typeOf(prev)], from, prev).map((o) => shift(o, -1440)).concat(build(dir, TIMETABLE[typeOf(D)], from, D))
         .sort((a, b) => a.leave - b.leave);
       ok = all.filter((o) => o.arrive <= T && (!sp || o.search.dep <= SPECIAL.dep));
     }
@@ -557,7 +566,9 @@
       <div class="set-row"><span>雨モード（雨の日は荒川沖 ⇄ 家をバスで計算）${G.weather && G.weather.rainToday() ? '・☔ 今日は雨の予報' : ''}</span>
       <div class="seg" style="margin:0">${[['auto', '天気で自動'], ['on', '☔ 雨'], ['off', '☀️ 晴れ']].map(([k, t]) => `<button data-rain="${k}" class="${(S.rain || 'auto') === k ? 'on' : ''}">${t}</button>`).join('')}</div></div>
       <div class="set-row" style="margin:0"><span>2限の特例（2限に行くときは ${SPECIAL.from} ${fmt(SPECIAL.dep)} 発までの電車に乗る）</span>
-      <div class="seg" style="margin:0"><button data-sp="1" class="${specialOn() ? 'on' : ''}">オン</button><button data-sp="0" class="${specialOn() ? '' : 'on'}">オフ</button></div></div></div>`;
+      <div class="seg" style="margin:0"><button data-sp="1" class="${specialOn() ? 'on' : ''}">オン</button><button data-sp="0" class="${specialOn() ? '' : 'on'}">オフ</button></div></div>
+      <div class="set-row" style="margin:12px 0 0"><span>金曜の特例（3限のあと急いで歩いて 南柏 ${fmt(FRI.mk)} 発に乗る）</span>
+      <div class="seg" style="margin:0"><button data-fri="1" class="${friOn() ? 'on' : ''}">オン</button><button data-fri="0" class="${friOn() ? '' : 'on'}">オフ</button></div></div></div>`;
     h += `<div class="foot"><button class="daytype" id="lcDay">${(S.dayMode === 'auto' ? '' : '手動：') + { wk: '平日', ho: '土休日' }[plan.type]}ダイヤ</button><br>
       タップで「自動→平日→土休日」を切り替え<br>時刻表どおりの表示です（遅延は反映されません）<br>出典：JR東日本 駅時刻表（南柏 2026年10月版／柏・荒川沖 2026年11月版）</div>`;
     v.innerHTML = h;
@@ -572,6 +583,7 @@
     else if (b.dataset.mode) { S.mode = b.dataset.mode; delete S.arriveDay; }
     else if (b.dataset.p) { S.arrive[S.dir] = b.dataset.p; delete S.arriveDay; }
     else if (b.dataset.rain) { S.rain = b.dataset.rain; }
+    else if (b.dataset.fri) { S.fri = b.dataset.fri === '1'; }
     else if (b.dataset.sp) { S.special2 = b.dataset.sp === '1'; }
     else if (b.dataset.k) { CFG[b.dataset.k] = S[b.dataset.k] = Number(b.dataset.v); }
     else if (b.id === 'lcDay') { S.dayMode = { auto: 'wk', wk: 'ho', ho: 'auto' }[S.dayMode]; }
