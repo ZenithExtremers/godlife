@@ -65,7 +65,7 @@
     const rows = [];
     u.forEach((e) => rows.push(`<div class="ci"><span class="tag u">${G.esc(e.kind || '大学')}</span><div class="ct"><b>${G.esc(e.title)}</b>${e.end && e.end !== e.date ? `<small>${md(e.date)}〜${md(e.end)}</small>` : ''}</div></div>`));
     kd.forEach((i) => rows.push(`<div class="ci" onclick="G.go('kadai')"><span class="tag k">締切 ${G.esc(i.due.slice(11))}</span><div class="ct"><b>${G.esc(i.title)}</b><small>${G.esc(i.teacher || '')}${i.teacher ? '・' : ''}${G.esc(i.remain)}</small></div></div>`));
-    my.forEach((e) => rows.push(`<div class="ci" data-edit="${e.id}"><span class="tag m">${e.allDay ? '終日' : `${G.esc(e.start || '')}${e.end ? '–' + G.esc(e.end) : ''}`}</span><div class="ct"><b>${G.esc(e.title)}</b><small>${e.place ? '📍' + G.esc(e.place) + '駅　' : ''}${e.repeat === 'weekly' ? '🔁 毎週' + wd(e.date) + '曜' : ''}${e.repeat === 'weekly' && e.memo ? '・' : ''}${G.esc(e.memo || '')}</small>${commuteNote(e)}${routeLinks(e, day)}</div></div>`));
+    my.forEach((e) => rows.push(`<div class="ci" data-edit="${e.id}"><span class="tag m">${e.allDay ? '終日' : `${G.esc(e.start || '')}${e.end ? '–' + G.esc(e.end) : ''}`}</span><div class="ct"><b>${G.esc(e.title)}</b><small>${e.place ? '📍' + G.esc(e.place) + '駅　' : ''}${e.repeat === 'weekly' ? '🔁 毎週' + wd(e.date) + '曜' : ''}${e.repeat === 'weekly' && e.memo ? '・' : ''}${G.esc(e.memo || '')}</small>${destNote(e, day)}${routeLinks(e, day)}</div></div>`));
     h += rows.length ? rows.join('') : '<div class="muted">予定はありません</div>';
     h += '</div>';
     if (G.kadai.summary().locked) h += '<p class="muted">課題の締切は、「課題」タブで合言葉を入れると表示されます。</p>';
@@ -88,50 +88,56 @@
     return `<span class="rl"><a class="btn" href="${go}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🚃 ${from}→${G.esc(e.place)} ${G.esc(e.start)}着で調べる</a>${back ? `<a class="btn" href="${back}" target="_blank" rel="noopener" onclick="event.stopPropagation()">帰り ${G.esc(e.end)}発</a>` : ''}</span>`;
   }
 
-  /* ---------- 通学の変更（この日だけ別の駅を使う） ---------- */
-  // その日の通学の変更：{ go: { id, leave, arrive }, back: { id, leave, arrive } }
-  function commuteFor(day) {
-    const e = mineOn(day).find((x) => x.cgo || x.cback);
-    if (!e) return null;
-    return { go: e.cgo ? { id: e.cgo, leave: e.cgoL, arrive: e.cgoA } : null, back: e.cback ? { id: e.cback, leave: e.cbackL, arrive: e.cbackA } : null };
-  }
+  /* ---------- 行き先（マイ駅）：部活など、大学の代わりに行く日 ---------- */
   const stOf = (id) => G.commute.mySt().find((m) => m.id === id);
-  function commuteNote(e) {
-    const g = e.cgo && stOf(e.cgo), b = e.cback && stOf(e.cback);
-    if (!g && !b) return '';
-    return `<small>🚃 ${g ? `行き：${G.esc(G.commute.stName(g))}駅から` : ''}${g && b ? '・' : ''}${b ? `帰り：${G.esc(G.commute.stName(b))}駅まで` : ''}</small>`;
-  }
-  function commuteForm(e) {
-    const ms = G.commute.mySt();
-    const opt = (sel) => `<option value="">いつもどおり（家・荒川沖）</option>` + ms.map((m) => `<option value="${m.id}"${m.id === sel ? ' selected' : ''}>${G.esc(G.commute.stName(m))}駅${m.label ? '（' + G.esc(m.label) + '）' : ''}</option>`).join('');
-    if (!ms.length) return `<label class="f">通学の変更（この日だけ別の駅を使う）</label><p class="muted" style="margin:4px 0">通学タブの設定で「マイ駅」を登録すると、ここで選べます。</p>`;
-    return `<label class="f">通学の変更（この日だけ別の駅を使う）</label>
-      <div class="row2"><div><small class="muted">行きの出発</small><select id="evCg">${opt(e.cgo)}</select></div><div><small class="muted">帰りの到着</small><select id="evCb">${opt(e.cback)}</select></div></div>
-      <div id="evCgT" hidden><small class="muted">常磐線以外の駅なので、Yahoo!乗換案内で調べた時刻を入れてください</small><a class="btn full" id="evCgY" target="_blank" rel="noopener" style="display:block;margin:4px 0">🚃 行きの経路を調べる</a>
-        <div class="row2"><div><small class="muted">出発する時刻</small><input id="evCgL" type="time" value="${e.cgoL || ''}"></div><div><small class="muted">大学に着く時刻</small><input id="evCgA" type="time" value="${e.cgoA || ''}"></div></div></div>
-      <div id="evCbT" hidden><small class="muted">常磐線以外の駅なので、Yahoo!乗換案内で調べた時刻を入れてください</small><a class="btn full" id="evCbY" target="_blank" rel="noopener" style="display:block;margin:4px 0">🚃 帰りの経路を調べる</a>
-        <div class="row2"><div><small class="muted">大学を出る時刻</small><input id="evCbL" type="time" value="${e.cbackL || ''}"></div><div><small class="muted">着く時刻</small><input id="evCbA" type="time" value="${e.cbackA || ''}"></div></div></div>`;
-  }
-  // 常磐線以外の駅を選んだら、時刻の入力と Yahoo!乗換案内のボタンを出す
-  function bindCommuteForm(root, getDay) {
-    const q = (x) => root.querySelector(x);
-    if (!q('#evCg')) return;
-    const hhmm = (m) => `${G.pad(Math.floor(m / 60))}:${G.pad(m % 60)}`;
-    const upd = () => {
-      const day = getDay(), d = parse(day);
-      const list = G.classes.dayList(d).filter((x) => !G.classes.isOnline(x.c));
-      const g = stOf(q('#evCg').value), b = stOf(q('#evCb').value);
-      q('#evCgT').hidden = !g || !!g.joban; q('#evCbT').hidden = !b || !!b.joban;
-      if (g && !g.joban) q('#evCgY').href = G.commute.yahooUrl(G.commute.stName(g), '南柏', d, list[0] ? hhmm(list[0].s - 25) : '08:25', 4);
-      if (b && !b.joban) q('#evCbY').href = G.commute.yahooUrl('南柏', G.commute.stName(b), d, list.length ? hhmm(list[list.length - 1].e + 27) : '17:00', 1);
+  // 予定 e の行き・帰りの計算（開始時刻に着く便・終了後に乗る便）
+  function destPlans(e, day) {
+    const st = e.dest && stOf(e.dest);
+    if (!st || e.allDay) return null;
+    const D = parse(day), mm = (v) => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
+    return {
+      st,
+      go: e.start ? G.commute.destPlan(st, D, 'go', mm(e.start), { leave: e.dL, arrive: e.dA }) : null,
+      back: e.end ? G.commute.destPlan(st, D, 'back', mm(e.end), { leave: e.bL, arrive: e.bA }) : null,
     };
-    q('#evCg').onchange = upd; q('#evCb').onchange = upd; q('#evD').addEventListener('change', upd); upd();
   }
-  function readCommuteForm(root) {
+  function destNote(e, day) {
+    const p = destPlans(e, day); if (!p) return '';
+    const f = G.fmtMin, nm = G.commute.stName(p.st);
+    const g = p.go && p.go.main, b = p.back && p.back.main;
+    const need = (p.go && p.go.manualNeeded) || (p.back && p.back.manualNeeded);
+    return `<small>🚃 📍${G.esc(nm)}駅${g ? `・行き：${f(g.leave)} に家を出る` : ''}${b ? `・帰り：${f(b.leave)} に出る → 家 ${f(b.arrive)} 着` : ''}${need ? '・Yahoo!で調べた時刻を入れてください' : ''}${(p.go && p.go.est) ? '（推定）' : ''}</small>`;
+  }
+  function destForm(e) {
+    const ms = G.commute.mySt();
+    if (!ms.length) return `<label class="f">行き先（部活など、大学の代わりに行く駅）</label><p class="muted" style="margin:4px 0">通学タブの設定で「マイ駅」を登録すると、ここで選べます。</p>`;
+    return `<label class="f">行き先（部活など、大学の代わりに行く駅）</label>
+      <select id="evDest"><option value="">なし</option>${ms.map((m) => `<option value="${m.id}"${m.id === e.dest ? ' selected' : ''}>${G.esc(G.commute.stName(m))}駅${m.label ? '（' + G.esc(m.label) + '）' : ''}</option>`).join('')}</select>
+      <small class="muted" id="evDestHint">開始時刻に着く電車と、終了時刻のあとに乗る電車を計算します（家側は荒川沖のまま）</small>
+      <div id="evDestM" hidden><small class="muted">常磐線以外の駅なので、Yahoo!乗換案内で調べた時刻を入れてください</small>
+        <a class="btn full" id="evDgY" target="_blank" rel="noopener" style="display:block;margin:4px 0">🚃 行きの経路を調べる</a>
+        <div class="row2"><div><small class="muted">家を出る時刻</small><input id="evDL" type="time" value="${e.dL || ''}"></div><div><small class="muted">着く時刻</small><input id="evDA" type="time" value="${e.dA || ''}"></div></div>
+        <a class="btn full" id="evDbY" target="_blank" rel="noopener" style="display:block;margin:4px 0">🚃 帰りの経路を調べる</a>
+        <div class="row2"><div><small class="muted">出る時刻</small><input id="evBL" type="time" value="${e.bL || ''}"></div><div><small class="muted">家に着く時刻</small><input id="evBA" type="time" value="${e.bA || ''}"></div></div></div>`;
+  }
+  function bindDestForm(root, getDay) {
     const q = (x) => root.querySelector(x);
-    if (!q('#evCg')) return {};
-    return { cgo: q('#evCg').value || null, cback: q('#evCb').value || null,
-      cgoL: q('#evCgL').value, cgoA: q('#evCgA').value, cbackL: q('#evCbL').value, cbackA: q('#evCbA').value };
+    if (!q('#evDest')) return;
+    const upd = () => {
+      const st = stOf(q('#evDest').value), d = parse(getDay());
+      q('#evDestM').hidden = !st || !!st.key;
+      if (st && !st.key) {
+        const nm = G.commute.stName(st);
+        q('#evDgY').href = G.commute.yahooUrl('荒川沖', nm, d, q('#evS').value || '18:00', 4);
+        q('#evDbY').href = G.commute.yahooUrl(nm, '荒川沖', d, q('#evE').value || '21:00', 1);
+      }
+    };
+    ['#evDest', '#evD', '#evS', '#evE'].forEach((x) => q(x).addEventListener('change', upd)); upd();
+  }
+  function readDestForm(root) {
+    const q = (x) => root.querySelector(x);
+    if (!q('#evDest')) return {};
+    return { dest: q('#evDest').value || null, dL: q('#evDL').value, dA: q('#evDA').value, bL: q('#evBL').value, bA: q('#evBA').value, cgo: null, cback: null };
   }
 
   /* ---------- 予定の編集 ---------- */
@@ -145,7 +151,7 @@
       <label class="ocr-mode" style="color:var(--text);font-size:15px"><input type="checkbox" id="evA"${e.allDay ? ' checked' : ''}> 終日</label>
       <div class="row2" id="evTimes"${e.allDay ? ' hidden' : ''}><div><label class="f">開始</label><input id="evS" type="time" value="${e.start || ''}"></div><div><label class="f">終了</label><input id="evE" type="time" value="${e.end || ''}"></div></div>
       <label class="f">行き先の駅（入れると Yahoo!乗換案内で経路を調べられます）</label><input id="evP" value="${G.esc(e.place || '')}" placeholder="例：土浦（「駅」はなくてOK）">
-      ${commuteForm(e)}
+      ${destForm(e)}
       <label class="f">くり返し</label><select id="evR"><option value="">しない</option><option value="weekly"${e.repeat === 'weekly' ? ' selected' : ''}>毎週</option></select>
       <label class="f">メモ</label><input id="evM" value="${G.esc(e.memo || '')}">
       <button class="btn pri full" id="evSave">保存</button>
@@ -153,10 +159,10 @@
       <button class="btn full" id="evCancel">閉じる</button>`, (root) => {
       const q = (s) => root.querySelector(s);
       q('#evA').onchange = () => { q('#evTimes').hidden = q('#evA').checked; };
-      bindCommuteForm(root, () => q('#evD').value || day);
+      bindDestForm(root, () => q('#evD').value || day);
       q('#evSave').onclick = () => {
         const t = q('#evT').value.trim(); if (!t) { q('#evT').focus(); return; }
-        const n = { ...e, title: t, date: q('#evD').value || day, allDay: q('#evA').checked, start: q('#evS').value, end: q('#evE').value, memo: q('#evM').value.trim(), repeat: q('#evR').value, place: q('#evP').value.trim().replace(/駅$/, ''), ...readCommuteForm(root) };
+        const n = { ...e, title: t, date: q('#evD').value || day, allDay: q('#evA').checked, start: q('#evS').value, end: q('#evE').value, memo: q('#evM').value.trim(), repeat: q('#evR').value, place: q('#evP').value.trim().replace(/駅$/, ''), ...readDestForm(root) };
         saveMine([...mine().filter((x) => x.id !== e.id), n]);
         st.sel = n.date; G.closeEditor(); render();
       };
@@ -223,6 +229,6 @@
   st.uni = G.load('gl.eventsCache', null);
   loadUni().then(() => { if (G.cur === 'class') render(); });
 
-  G.calendar = { commuteFor, routeLinks, fromStation, view: (x) => { st.view = x; if (G.cur === 'class') render(); }, mineOn, uniOn };
+  G.calendar = { destPlans, routeLinks, fromStation, view: (x) => { st.view = x; if (G.cur === 'class') render(); }, mineOn, uniOn };
   G.reg('class', { title: 'カレンダー', render, tick: 60, skipTick: () => st.view === 'tt', onShow: () => { loadUni().then(() => G.cur === 'class' && render()); if (!G.kadai.summary().locked) G.kadai.refresh(); } });
 })();

@@ -49,9 +49,6 @@
   const row = (go, label, main, sub, warn) => `<div class="crow" onclick="${go}"><div class="tx"><div class="t1">${label}</div>
     <div class="t2${warn ? ' late' : ''}">${main}</div>${sub ? `<div class="t3">${sub}</div>` : ''}</div><div class="go">›</div></div>`;
 
-  // 通学の変更（この日だけ別の駅から）があれば、その名前を使う
-  const ovTxt = (date, from) => { if (from !== 'home') return ''; const o = G.commute.overrideOn(date, 'go'); return o ? `（この日は📍${G.esc(G.commute.stName(o.st))}駅から）` : ''; };
-  const leaveName = (date, from, P) => { if (from !== 'home') return P.short; const o = G.commute.overrideOn(date, 'go'); return o ? (o.st.label || G.commute.stName(o.st) + '駅') : P.short; };
 
   // ① 授業に間に合うには何時に家を出るか
   function classRow(now) {
@@ -66,7 +63,7 @@
     const P = G.commute.PLACES[from];
     const plan = G.commute.arrivePlan('school', now, nd.first.s, nd.k, from);
     const o = plan.opts[0];
-    const label = `${G.commute.dayLabel(nd.date, now) || '今日 '}${pfx(nd.first)}（${G.esc(nd.first.c.name)}）に間に合うには${from !== 'home' ? `（📍${P.name}から）` : ''}${ovTxt(nd.date, from)}`;
+    const label = `${G.commute.dayLabel(nd.date, now) || '今日 '}${pfx(nd.first)}（${G.esc(nd.first.c.name)}）に間に合うには${from !== 'home' ? `（📍${P.name}から）` : ''}`;
     const go = `G.commute.open('school','arrive','${hhmm(nd.first.s)}','${G.ymd(nd.date)}')`;
     if (!o) return row(go, label, '間に合う電車がありません', '', true);
     const left = o.leave - plan.nowAbs;
@@ -80,7 +77,7 @@
       sub += `<br>💻 ${ob.map((x) => x.n + '限').join('・')}はオンライン（家で受けてから出発）`;
       if (o.leave < lastOn.e) sub += `<br><span class="late">⚠ ${lastOn.n}限のオンライン授業（〜${G.fmtMin(lastOn.e)}）の途中で出発になります</span>`;
     }
-    return row(go, label, `${G.fmtMin(o.leave)} に${leaveName(nd.date, from, P)}を出る`, sub, left < 0);
+    return row(go, label, `${G.fmtMin(o.leave)} に${P.short}を出る`, sub, left < 0);
   }
 
   // 車内：今乗っている電車（行き・帰りのうち時刻表で見つかった方）
@@ -90,12 +87,33 @@
     return [`<div class="onb-wrap"><div class="t1 muted" style="margin:8px 0 4px">乗っている電車の候補（${dir === 'school' ? '行き・荒川沖→柏' : '帰り・柏→荒川沖'}）</div>${G.commute.onboardList(dir, now, false)}</div>`];
   }
 
+  // 部活など（予定の行き先がマイ駅）の行き・帰り
+  function destRows(now) {
+    const today = G.ymd(now), min = G.minOfDay(now), out = [];
+    for (const e of G.calendar.mineOn(today)) {
+      const p = G.calendar.destPlans(e, today); if (!p) continue;
+      const nm = G.esc(G.commute.stName(p.st)), f = G.fmtMin, est = p.go && p.go.est ? '（推定）' : '';
+      const go = p.go && p.go.main, back = p.back && p.back.main;
+      if (p.go && p.go.manualNeeded) out.push(row(`G.go('class')`, `${G.esc(e.title)}（📍${nm}駅）`, '時刻を入れてください', 'カレンダーの予定に、Yahoo!乗換案内で調べた時刻を入れると出ます'));
+      else if (go && min <= go.leave + 30) {
+        const left = go.leave - min;
+        out.push(row(`G.go('class')`, `${G.esc(e.title)} ${G.esc(e.start)}（📍${nm}駅）に間に合うには${est}`, `${f(go.leave)} に家を出る`,
+          `${left < 0 ? '⚠ 出発時刻を過ぎています' : 'あと' + G.dur(left)}・${G.esc(G.commute.placeName(p.st))}に ${f(go.arrive)} 着${p.go.after ? `<br>1本後：${f(p.go.after.leave)} 出発 → ${f(p.go.after.arrive)} 着` : ''}`, left < 0));
+      }
+      if (back && min <= back.leave + 60) {
+        out.push(row(`G.go('class')`, `${G.esc(e.title)}のあと（${G.esc(e.end)} 終了）に帰るなら${est}`, `${f(back.leave)} に出る`,
+          `家に ${f(back.arrive)} 着${p.back.after ? `<br>1本後：${f(p.back.after.leave)} 出る → 家 ${f(p.back.after.arrive)} 着` : ''}`));
+      }
+    }
+    return out;
+  }
+
   // ② 今から行くなら
   function goNowRow(now, cs) {
     const from = G.commute.fromFor('school');
     if (!from) return ''; // 大学にいる
     const P = G.commute.PLACES[from];
-    const label = (from === 'home' ? '今から行くなら' : `今から行くなら（📍${P.name}から）`) + ovTxt(now, from);
+    const label = (from === 'home' ? '今から行くなら' : `今から行くなら（📍${P.name}から）`);
     const plan = G.commute.nowPlan('school', now, from);
     const o = plan.opts[0];
     if (!o) return row(`G.commute.open('school','now')`, label, '候補がありません', '');
@@ -109,7 +127,7 @@
     }
     const left = o.leave - plan.nowAbs;
     return row(`G.commute.open('school','now')`, label,
-      `${o.tomorrow ? '明日 ' : ''}${G.fmtMin(o.leave)} に${leaveName(now, from, P)}を出る`,
+      `${o.tomorrow ? '明日 ' : ''}${G.fmtMin(o.leave)} に${P.short}を出る`,
       `あと${G.dur(left)}・大学 ${G.fmtMin(o.arrive)} 着${note ? '・' + note : ''}${plan.after ? `<br>1本後：${plan.after.tomorrow ? '明日 ' : ''}${G.fmtMin(plan.after.leave)} 出発 → 大学 ${G.fmtMin(plan.after.arrive)} 着` : ''}`);
   }
 
@@ -124,12 +142,11 @@
     const plan = G.commute.nowPlan('home', base, from);
     const o = plan.opts[0];
     const label = after ? `授業後（${G.fmtMin(after)} 終了）に帰るなら` : from === 'univ' ? '今から帰るなら' : `今から帰るなら（📍${P.name}から）`;
-    const bo = G.commute.overrideOn(now, 'back'), dest = bo ? G.commute.stName(bo.st) + '駅' + (bo.st.label ? '経由で' + bo.st.label : '') : '家';
     if (!o) return row(`G.commute.open('home','now')`, label, '候補がありません', '');
     return row(`G.commute.open('home','now')`, label,
       `${o.tomorrow ? '明日 ' : ''}${G.fmtMin(o.leave)} に${P.short}を出る`,
-      (after ? `${dest}に ${G.fmtMin(o.arrive)} 着` : `あと${G.dur(o.leave - plan.nowAbs)}・${dest}に ${G.fmtMin(o.arrive)} 着`) +
-      (plan.after ? `<br>1本後：${plan.after.tomorrow ? '明日 ' : ''}${G.fmtMin(plan.after.leave)} 出発 → ${plan.after.via ? G.commute.stName(plan.after.via) + '駅経由' : '家'} ${G.fmtMin(plan.after.arrive)} 着` : ''));
+      (after ? `家に ${G.fmtMin(o.arrive)} 着` : `あと${G.dur(o.leave - plan.nowAbs)}・家に ${G.fmtMin(o.arrive)} 着`) +
+      (plan.after ? `<br>1本後：${plan.after.tomorrow ? '明日 ' : ''}${G.fmtMin(plan.after.leave)} 出発 → 家 ${G.fmtMin(plan.after.arrive)} 着` : ''));
   }
 
   // 移動中カード（「家を出た」「大学を出た」を押したあと）
@@ -178,6 +195,9 @@
     // 家にいそうな時間（1コマ目の前・授業のない日の午前）は「行き」を上に
     const atHome = cs.first ? min < cs.first.s : min < 12 * 60;
     let rows = atHome ? [classRow(now), goNowRow(now, cs), homeRow(now, cs)] : [homeRow(now, cs), classRow(now), goNowRow(now, cs)];
+    // 今日の部活など（マイ駅が行き先の予定）：行きと帰り。授業のない日は大学の行は出さない
+    const dr = destRows(now);
+    rows = dr.length && !cs.first ? dr : rows.concat(dr);
     // 今日の予定に行き先の駅があれば、Yahoo!乗換案内で調べる行を足す
     const today = G.ymd(now);
     const evs = G.calendar.mineOn(today).filter((e) => e.place && e.start && !e.allDay && e.start > `${G.pad(now.getHours())}:${G.pad(now.getMinutes())}`);
