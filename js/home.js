@@ -87,6 +87,11 @@
     return [`<div class="onb-wrap"><div class="t1 muted" style="margin:8px 0 4px">乗っている電車の候補（${dir === 'school' ? '行き・荒川沖→柏' : '帰り・柏→荒川沖'}）</div>${G.commute.onboardList(dir, now, false)}</div>`];
   }
 
+  // 荒川沖の時刻がまだの行：Yahoo!で調べる・予定を開いて入れる
+  const pendingRow = (e, day, kind, label) => `<div class="crow" style="cursor:default"><div class="tx"><div class="t1">${label}</div>
+    <div class="t2" style="font-size:16px">荒川沖の時刻を入れてください</div>
+    <div class="rl"><a class="btn" href="${G.calendar.destYahoo(e, day, kind)}" target="_blank" rel="noopener">🚃 Yahoo!で調べる</a><button class="btn" onclick="G.calendar.editById('${e.id}')">✏️ 時刻を入れる</button></div></div></div>`;
+
   // 部活など（予定の行き先がマイ駅）の行き・帰り
   function destRows(now) {
     const today = G.ymd(now), min = G.minOfDay(now), out = [];
@@ -94,12 +99,13 @@
       const p = G.calendar.destPlans(e, today); if (!p) continue;
       const nm = G.esc(G.commute.stName(p.st)), f = G.fmtMin, est = p.go && p.go.est ? '（推定）' : '';
       const go = p.go && p.go.main, back = p.back && p.back.main;
-      if (p.go && p.go.manualNeeded) out.push(row(`G.go('class')`, `${G.esc(e.title)}（📍${nm}駅）`, '時刻を入れてください', 'カレンダーの予定に、Yahoo!乗換案内で調べた時刻を入れると出ます'));
+      if (p.go && p.go.manualNeeded) out.push(pendingRow(e, today, 'go', `${G.esc(e.title)}（📍${nm}駅に ${f(p.go.T)} 着）`));
       else if (go && min <= go.leave + 30) {
         const left = go.leave - min;
         out.push(row(`G.go('class')`, `${G.esc(e.title)}${e.start ? ' ' + G.esc(e.start) : ''}（📍${nm}駅）に間に合うには${est}`, `${f(go.leave)} に家を出る`,
           `${left < 0 ? '⚠ 出発時刻を過ぎています' : 'あと' + G.dur(left)}・${G.esc(G.commute.placeName(p.st))}に ${f(go.arrive)} 着${p.go.after ? `<br>1本後：${f(p.go.after.leave)} 出発 → ${f(p.go.after.arrive)} 着` : ''}`, left < 0));
       }
+      if (p.back && p.back.manualNeeded && min <= p.back.T + 60) out.push(pendingRow(e, today, 'back', `${G.esc(e.title)}のあと（📍${nm}駅を ${f(p.back.T)} ごろ出る）`));
       if (back && min <= back.leave + 60) {
         out.push(row(`G.go('class')`, `${G.esc(e.title)}のあと${e.end ? `（${G.esc(e.end)} 終了）` : ''}に帰るなら${est}`, `${f(back.leave)} に出る`,
           `家に ${f(back.arrive)} 着${p.back.after ? `<br>1本後：${f(p.back.after.leave)} 出る → 家 ${f(p.back.after.arrive)} 着` : ''}`));
