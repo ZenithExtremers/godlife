@@ -87,11 +87,12 @@
   G.$('mGps').onclick = () => { G.save('gl.autoGps', !G.commute.autoOn()); paintGps(); if (G.commute.autoOn()) G.commute.autoLocate(rerender); };
   paintGps();
   G.$('mNotify').onclick = () => { G.$('sheet').classList.remove('show'); G.notify.open(); };
+  G.$('mSync').onclick = () => { G.$('sheet').classList.remove('show'); G.sync.open(); };
   // 天気と通知の予約（開いたとき・画面に戻ったとき）
   const refreshExtra = () => {
     // 雨モードが天気で変わるので、通知の予約は天気を読んでから
     G.weather.load().then(() => { if (G.cur === 'home' || G.cur === 'commute') G.mods[G.cur].render(); })
-      .finally(() => G.notify.schedule().catch(() => {}));
+      .finally(() => { G.notify.schedule().catch(() => {}); G.sync.auto(); });
   };
   // シンプル表示（開いた瞬間に「あと何分で出るか」を大きく）
   const glanceOn = () => G.load('gl.glance', true) !== false;
