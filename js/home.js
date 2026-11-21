@@ -58,7 +58,7 @@
     const loc = G.commute.fromFor('school');
     if (!loc) return ''; // 大学にいる
     const nd = nextClassDay(now, loc);
-    if (!nd) return '';
+    if (!nd || nd.k > 1) return ''; // 出すのは今日と明日（前日）の授業だけ
     const from = nd.k === 0 ? loc : 'home';
     const P = G.commute.PLACES[from];
     const plan = G.commute.arrivePlan('school', now, nd.first.s, nd.k, from);
