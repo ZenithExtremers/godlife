@@ -151,6 +151,67 @@
     return { dest: q('#evDest').value || null, dL: q('#evDL').value, dA: q('#evDA').value, bL: q('#evBL').value, bA: q('#evBA').value, cgo: null, cback: null };
   }
 
+  /* ---------- 1日の予定（時刻順の流れ） ---------- */
+  function dayView(day) {
+    const D = parse(day), now = new Date(), today = ymd(now), isToday = day === today;
+    const k = Math.round((D - parse(today)) / 864e5); // 今日から何日後か
+    const f = G.fmtMin, items = [], tops = [];
+    const add = (t, icon, title, sub, cls) => items.push({ t, icon, title, sub: sub || '', cls: cls || '' });
+    // 終日のもの（大学の行事・祝日・終日の予定）
+    if (holiday(day)) tops.push('🎌 祝日');
+    uniOn(day).forEach((e) => tops.push(`🏫 ${G.esc(e.title)}`));
+    // 授業と、大学への行き帰り
+    const list = G.classes.dayList(D);
+    const campus = list.filter((x) => !G.classes.isOnline(x.c));
+    list.forEach((x) => add(x.s, G.classes.isOnline(x.c) ? '💻' : '🎓', `${x.n}限 ${G.esc(x.c.name)}`, `${f(x.s)}–${f(x.e)}${G.classes.isOnline(x.c) ? '・オンライン' : x.c.room ? '・' + G.esc(x.c.room) : ''}`, 'cls'));
+    if (campus.length) {
+      const first = campus[0], last = campus[campus.length - 1];
+      const go = G.commute.arrivePlan('school', now, first.s, k, 'home').opts[0];
+      if (go) {
+        add(go.leave, '🚪', '家を出る', `荒川沖 ${G.esc(go.legs[0][1])}・${G.esc(go.legs[0][2])}${G.commute.rainy() ? '・☔ バス' : ''}`, 'move');
+        add(go.arrive, '🏫', '大学に着く', first.s - go.arrive > 0 ? `${first.n}限の${G.dur(first.s - go.arrive)}前` : `${first.n}限にちょうど`, 'move');
+      }
+      const end = new Date(D); end.setMinutes(last.e);
+      const back = G.commute.nowPlan('home', end, 'univ').opts[0];
+      if (back && !back.tomorrow) {
+        add(back.leave, '🚃', '大学を出る', `南柏 ${G.esc(back.legs[0][1])}`, 'move');
+        add(back.arrive, '🏠', '家に着く', '', 'move');
+      }
+    }
+    // 自分の予定・部活の行き帰り
+    mineOn(day).forEach((e) => {
+      if (e.allDay || !e.start) tops.push(`📌 ${G.esc(e.title)}`);
+      else add(toMin(e.start), '📌', G.esc(e.title), `${G.esc(e.start)}${e.end ? '–' + G.esc(e.end) : ''}${e.place ? '・📍' + G.esc(e.place) : ''}`, 'ev');
+      const p = destPlans(e, day); if (!p) return;
+      const nm = G.esc(G.commute.stName(p.st)), go = p.go && p.go.main, bk = p.back && p.back.main;
+      if (go) { add(go.leave, '🚪', `家を出る（${G.esc(e.title)}）`, go.legs[0][0] === '荒川沖' ? `荒川沖 ${G.esc(go.legs[0][1])}` : '', 'move'); add(go.arrive, '📍', `${G.esc(G.commute.placeName(p.st))}に着く`, `${nm}駅`, 'move'); }
+      else if (p.go && p.go.manualNeeded) tops.push(`⚠ ${G.esc(e.title)}：荒川沖の時刻がまだです`);
+      if (bk) { add(bk.leave, '🚃', `${G.esc(G.commute.placeName(p.st))}を出る`, '', 'move'); add(bk.arrive, '🏠', '家に着く', '', 'move'); }
+    });
+    // 課題の締切
+    kadaiOn(day).forEach((i) => add(toMin(i.due.slice(11)), '📝', `締切：${G.esc(i.title)}`, G.esc(i.remain), 'due'));
+    const rank = { move: 0, cls: 1, ev: 2, due: 3 }; // 同じ時刻なら移動を先に
+    items.sort((a, b) => a.t - b.t || (rank[a.cls] ?? 9) - (rank[b.cls] ?? 9));
+    // まとめ
+    const nCls = list.length, nEv = mineOn(day).length, nDue = kadaiOn(day).length;
+    const sum = [nCls && `授業${nCls}コマ`, nEv && `予定${nEv}件`, nDue && `締切${nDue}件`].filter(Boolean).join('・') || '予定はありません';
+    const wx = G.weather && G.weather.probIn(0, day, 6, 22);
+    let h = `<div class="cal-head"><button class="btn" data-dmv="-1" aria-label="前の日">‹</button><b>${md(day)}</b><button class="btn" data-dmv="1" aria-label="次の日">›</button><button class="btn" data-dtoday="1">今日</button></div>`;
+    h += `<div class="card day-sum"><div class="t1">${isToday ? '今日はこんな予定です' : k === 1 ? '明日はこんな予定です' : md(day) + 'の予定'}</div><div class="t2">${sum}</div>${wx != null ? `<div class="t3">☂ 家の周りの降水確率 ${wx}%${G.commute.rainy() && isToday ? '・雨モード' : ''}</div>` : ''}
+      ${tops.length ? `<div class="day-tops">${tops.map((t) => `<span>${t}</span>`).join('')}</div>` : ''}</div>`;
+    if (!items.length) return h + '<div class="card muted">時刻のある予定はありません。</div>';
+    const nowMin = G.minOfDay(now);
+    let marked = !isToday;
+    h += '<div class="card day-line">' + items.map((it) => {
+      let pre = '';
+      if (!marked && it.t > nowMin) { marked = true; pre = `<div class="dl-now"><span>いま ${now.getHours()}:${G.pad(now.getMinutes())}</span></div>`; }
+      const past = isToday && it.t <= nowMin;
+      return `${pre}<div class="dl ${it.cls}${past ? ' past' : ''}"><b>${f(it.t)}</b><i>${it.icon}</i><div><div class="dl-t">${it.title}</div>${it.sub ? `<div class="dl-s">${it.sub}</div>` : ''}</div></div>`;
+    }).join('') + (marked ? '' : `<div class="dl-now"><span>いま ${now.getHours()}:${G.pad(now.getMinutes())}</span></div>`) + '</div>';
+    return h;
+  }
+  const toMin = (v) => { const [hh, mm] = String(v).split(':').map(Number); return hh * 60 + (mm || 0); };
+
   /* ---------- 予定の編集 ---------- */
   function edit(id, day) {
     const all = mine();
@@ -197,9 +258,10 @@
   /* ---------- 画面 ---------- */
   function render() {
     const v = G.$('v-class');
-    const seg = `<div class="seg"><button data-cv="cal" class="${st.view === 'cal' ? 'on' : ''}">📅 カレンダー</button><button data-cv="tt" class="${st.view === 'tt' ? 'on' : ''}">🗓 時間割</button></div>`;
-    G.$('title').textContent = st.view === 'cal' ? 'カレンダー' : '時間割';
+    const seg = `<div class="seg"><button data-cv="cal" class="${st.view === 'cal' ? 'on' : ''}">📅 月</button><button data-cv="day" class="${st.view === 'day' ? 'on' : ''}">📋 1日の予定</button><button data-cv="tt" class="${st.view === 'tt' ? 'on' : ''}">🗓 時間割</button></div>`;
+    G.$('title').textContent = { cal: 'カレンダー', day: '1日の予定', tt: '時間割' }[st.view];
     if (st.view === 'tt') { v.innerHTML = seg + '<div id="ttBox"></div>'; G.classes.renderTT(); return; }
+    if (st.view === 'day') { if (!st.sel) st.sel = ymd(new Date()); v.innerHTML = seg + dayView(st.sel); return; }
     const now = new Date();
     if (!st.ym) st.ym = [now.getFullYear(), now.getMonth()];
     if (!st.sel) st.sel = ymd(now);
@@ -214,6 +276,8 @@
     if (ed) { edit(ed.dataset.edit, st.sel); return; }
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.cv) { st.view = b.dataset.cv; render(); return; }
+    if (b.dataset.dmv) { st.sel = ymd(addDays(parse(st.sel), Number(b.dataset.dmv))); const d = parse(st.sel); st.ym = [d.getFullYear(), d.getMonth()]; render(); return; }
+    if (b.dataset.dtoday) { st.sel = ymd(new Date()); render(); return; }
     if (b.dataset.mv) { const [y, m] = st.ym; const d = new Date(y, m + Number(b.dataset.mv), 1); st.ym = [d.getFullYear(), d.getMonth()]; render(); return; }
     if (b.dataset.today) { const n = new Date(); st.ym = [n.getFullYear(), n.getMonth()]; st.sel = ymd(n); render(); return; }
     if (b.dataset.day) {

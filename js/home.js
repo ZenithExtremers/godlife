@@ -94,21 +94,31 @@
 
   // 部活など（予定の行き先がマイ駅）の行き・帰り
   function destRows(now) {
-    const today = G.ymd(now), min = G.minOfDay(now), out = [];
-    for (const e of G.calendar.mineOn(today)) {
-      const p = G.calendar.destPlans(e, today); if (!p) continue;
-      const nm = G.esc(G.commute.stName(p.st)), f = G.fmtMin, est = p.go && p.go.est ? '（推定）' : '';
-      const go = p.go && p.go.main, back = p.back && p.back.main;
-      if (p.go && p.go.manualNeeded) out.push(pendingRow(e, today, 'go', `${G.esc(e.title)}（📍${nm}駅に ${f(p.go.T)} 着）`));
-      else if (go && min <= go.leave + 30) {
-        const left = go.leave - min;
-        out.push(row(`G.go('class')`, `${G.esc(e.title)}${e.start ? ' ' + G.esc(e.start) : ''}（📍${nm}駅）に間に合うには${est}`, `${f(go.leave)} に家を出る`,
-          `${left < 0 ? '⚠ 出発時刻を過ぎています' : 'あと' + G.dur(left)}・${G.esc(G.commute.placeName(p.st))}に ${f(go.arrive)} 着${p.go.after ? `<br>1本後：${f(p.go.after.leave)} 出発 → ${f(p.go.after.arrive)} 着` : ''}`, left < 0));
-      }
-      if (p.back && p.back.manualNeeded && min <= p.back.T + 60) out.push(pendingRow(e, today, 'back', `${G.esc(e.title)}のあと（📍${nm}駅を ${f(p.back.T)} ごろ出る）`));
-      if (back && min <= back.leave + 60) {
-        out.push(row(`G.go('class')`, `${G.esc(e.title)}のあと${e.end ? `（${G.esc(e.end)} 終了）` : ''}に帰るなら${est}`, `${f(back.leave)} に出る`,
-          `家に ${f(back.arrive)} 着${p.back.after ? `<br>1本後：${f(p.back.after.leave)} 出る → 家 ${f(p.back.after.arrive)} 着` : ''}`));
+    const min = G.minOfDay(now), out = [], f = G.fmtMin;
+    // 今日の分と、明日の分（行きだけ・前日のうちから出す）
+    for (const k of [0, 1]) {
+      const D = new Date(now); D.setHours(0, 0, 0, 0); D.setDate(D.getDate() + k);
+      const day = G.ymd(D), dl = k ? '明日 ' : '';
+      const m = k ? min - 1440 : min; // 明日の時刻と比べるための「今」
+      for (const e of G.calendar.mineOn(day)) {
+        const p = G.calendar.destPlans(e, day); if (!p) continue;
+        const nm = G.esc(G.commute.stName(p.st)), est = p.go && p.go.est ? '（推定）' : '';
+        const go = p.go && p.go.main, back = p.back && p.back.main;
+        const araGo = go && go.legs && go.legs[0] && go.legs[0][0] === '荒川沖' ? `荒川沖 ${go.legs[0][1]}・` : '';
+        if (p.go && p.go.manualNeeded) out.push(pendingRow(e, day, 'go', `${dl}${G.esc(e.title)}（📍${nm}駅に ${f(p.go.T)} 着）`));
+        else if (go && m <= go.arrive) {
+          const left = go.leave - m, moving = left < 0;
+          out.push(row(`G.calendar.editById('${e.id}')`, `${dl}${G.esc(e.title)}${e.start ? ' ' + G.esc(e.start) : ''}（📍${nm}駅）${moving ? '・移動中' : 'に間に合うには'}${est}`,
+            `${f(go.leave)} に家を出る`,
+            `${moving ? '' : 'あと' + G.dur(left) + '・'}${araGo}${G.esc(G.commute.placeName(p.st))}に ${f(go.arrive)} 着${!moving && p.go.after ? `<br>1本後：${f(p.go.after.leave)} 出発 → ${f(p.go.after.arrive)} 着` : ''}`));
+        }
+        if (k) continue; // 帰りは当日だけ
+        if (p.back && p.back.manualNeeded && m <= p.back.T + 60) out.push(pendingRow(e, day, 'back', `${G.esc(e.title)}のあと（📍${nm}駅を ${f(p.back.T)} ごろ出る）`));
+        if (back && m <= back.arrive) {
+          const araBack = back.legs && back.legs.find((l) => l[0] === '荒川沖');
+          out.push(row(`G.calendar.editById('${e.id}')`, `${G.esc(e.title)}のあと${e.end ? `（${G.esc(e.end)} 終了）` : ''}に帰るなら${est}`, `${f(back.leave)} に出る`,
+            `${araBack ? `荒川沖 ${araBack[1]}・` : ''}家に ${f(back.arrive)} 着${p.back.after ? `<br>1本後：${f(p.back.after.leave)} 出る → 家 ${f(p.back.after.arrive)} 着` : ''}`));
+        }
       }
     }
     return out;
@@ -118,6 +128,7 @@
   function goNowRow(now, cs) {
     const from = G.commute.fromFor('school');
     if (!from) return ''; // 大学にいる
+    if (cs.last && G.minOfDay(now) >= cs.last.e) return ''; // 今日の授業はもう終わった
     const P = G.commute.PLACES[from];
     const label = (from === 'home' ? '今から行くなら' : `今から行くなら（📍${P.name}から）`);
     const plan = G.commute.nowPlan('school', now, from);

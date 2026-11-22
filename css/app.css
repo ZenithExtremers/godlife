@@ -274,3 +274,24 @@ label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .ms-row small{display:block;color:var(--sub);font-size:12px}
 .ms-row .btn{font-size:12px;padding:6px 10px}
 [hidden]{display:none!important}
+/* 1日の予定 */
+.day-sum .t1{font-size:13px;color:var(--sub)}
+.day-sum .t2{font-size:20px;font-weight:800;margin-top:2px}
+.day-sum .t3{font-size:13px;color:var(--sub);margin-top:2px}
+.day-tops{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.day-tops span{background:var(--soft);border-radius:8px;padding:3px 8px;font-size:12px;font-weight:700}
+.day-line{padding:6px 14px}
+.dl{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)}
+.dl:first-child{border-top:0}
+.dl b{width:44px;flex:none;font-variant-numeric:tabular-nums;font-size:15px}
+.dl i{font-style:normal;font-size:18px;width:24px;text-align:center;flex:none}
+.dl>div{flex:1;min-width:0}
+.dl-t{font-weight:700;font-size:15px}
+.dl-s{font-size:12px;color:var(--sub);margin-top:1px}
+.dl.cls .dl-t{color:var(--main)}
+:root[data-theme=dark] .dl.cls .dl-t{color:#7fc4e0}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .dl.cls .dl-t{color:#7fc4e0}}
+.dl.due .dl-t{color:var(--over)}
+.dl.past{opacity:.45}
+.dl-now{border-top:2px solid var(--accent);margin:2px 0;position:relative;height:0}
+.dl-now span{position:absolute;right:0;top:-10px;background:var(--accent);color:#123e50;font-size:11px;font-weight:800;border-radius:6px;padding:1px 6px}
