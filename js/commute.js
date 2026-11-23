@@ -46,7 +46,7 @@
     const B = busTT(tt);
     if (B) {
       const b = B.fromAra.find(([dep]) => dep >= araArr + BUSCFG.transfer);
-      if (b) return { arrive: b[1] + BUSCFG.walk, label: `バス ${fmt(b[0])} 発 → 並木大橋 ${fmt(b[1])}`, do: `荒川沖 ${fmt(araArr)} 着 → 西口 ${fmt(b[0])} 発のバスで並木大橋へ（家まで歩いて${BUSCFG.walk}分）` };
+      if (b) return { arrive: b[1] + BUSCFG.walk, busBack: b, label: `バス ${fmt(b[0])} 発 → 並木大橋 ${fmt(b[1])}`, do: `荒川沖 ${fmt(araArr)} 着 → 西口 ${fmt(b[0])} 発のバスで並木大橋へ（家まで歩いて${BUSCFG.walk}分）` };
     }
     return { arrive: araArr + HM(), label: HV() + ' ' + HM() + '分', do: `荒川沖 ${fmt(araArr)} 着 → ${HV()}で家へ（${HM()}分）` };
   }
@@ -57,10 +57,12 @@
       const ok = B.toAra.filter(([, arr]) => arr <= araDep - BUSCFG.transfer);
       const b = ok[ok.length - 1];
       if (!b) return null;
-      return { leave: b[0] - BUSCFG.walk, do: `並木大橋 ${fmt(b[0])} 発のバスで荒川沖駅西口へ（${fmt(b[1])} 着。バス停まで歩いて${BUSCFG.walk}分）` };
+      return { leave: b[0] - BUSCFG.walk, bus: b, do: `並木大橋 ${fmt(b[0])} 発のバスで荒川沖駅西口へ（${fmt(b[1])} 着。バス停まで歩いて${BUSCFG.walk}分）` };
     }
     return { leave: araDep - HM() - CFG.margin, do: `荒川沖駅まで${HV()}（${HM()}分）` };
   }
+  // 雨の日に乗るバスの一言（行きの候補 o に bus があるとき）
+  const busText = (o) => (o && o.bus ? `🚌 並木大橋 ${fmt(o.bus[0])} 発（→荒川沖 ${fmt(o.bus[1])}）` : '');
   const BUSCFG = { walk: 15, transfer: 3 }; // 家 ⇄ 並木大橋の徒歩、バスと電車の乗り換え
 
   /* ---- マイ駅（部活などで、大学の代わりに行く駅）。家側（荒川沖）は固定 ---- */
@@ -100,7 +102,7 @@
         steps = [...first, { arr: null, t: kArr, do: `柏 ${fmt(kArr)} 着 → ${fmt(mk - CFG.mkKashiwa)} 発 各駅停車に乗り換え` },
           { arr: null, t: arrS, do: `${nm} ${fmt(arrS)} 着 → ${st.how}で${placeName(st)}へ（${st.access}分）` }];
       }
-      out.push({ leave: out1.leave, arrive: arrS + st.access, legs, steps, search: { from: '荒川沖', to: nm, dep: araDep } });
+      out.push({ leave: out1.leave, arrive: arrS + st.access, bus: out1.bus, legs, steps, search: { from: '荒川沖', to: nm, dep: araDep } });
     }
     return prune(out);
   }
@@ -140,7 +142,7 @@
       if (kind === 'go') {
         const o1 = outLeg(tt, ara);
         if (!o1) return { main: null, noBus: true, T };
-        return { main: { leave: o1.leave, arrive: T, manual: true, legs: [['荒川沖', fmt(ara) + ' 発', 'Yahoo!で調べた経路'], [nm, fmt(T) + ' までに着く', '']], steps: [] }, before: null, after: null };
+        return { main: { leave: o1.leave, arrive: T, manual: true, bus: o1.bus, legs: [['荒川沖', fmt(ara) + ' 発', 'Yahoo!で調べた経路'], [nm, fmt(T) + ' までに着く', '']], steps: [] }, before: null, after: null };
       }
       const inl = inLeg(tt, ara);
       return { main: { leave: T, arrive: inl.arrive, manual: true, legs: [[nm, fmt(T) + ' ごろ出る', 'Yahoo!で調べた経路'], ['荒川沖', fmt(ara) + ' 着', inl.label]], steps: [] }, before: null, after: null };
@@ -319,6 +321,7 @@
       out.push({
         leave: out1 ? out1.leave : araDep - CFG.margin,
         arrive: mk + CFG.walkUniv,
+        bus: out1 && out1.bus,
         search: { from: '荒川沖', to: '南柏', dep: araDep },
         legs: [
           ['荒川沖', fmt(araDep) + ' 発', `${type} ${dest}行`],
@@ -425,12 +428,12 @@
     return k <= 0 ? '' : k === 1 ? '明日 ' : `${D.getMonth() + 1}/${D.getDate()}(${G.WD[D.getDay()]}) `;
   }
   const getArrive = () => S.arrive[S.dir] || (S.dir === 'school' ? '08:50' : '18:00');
-  const legsHtml = (o) => `<ol class="legs">${o.legs.map(([st, t, how]) => `<li><b>${st}</b><span>${t}</span><em>${how}</em></li>`).join('')}</ol>`;
+  const legsHtml = (o) => `<ol class="legs">${o.bus ? `<li><b>並木大橋</b><span>${fmt(o.bus[0])} 発</span><em>🚌 バス → 荒川沖駅西口 ${fmt(o.bus[1])} 着（家から徒歩${BUSCFG.walk}分）</em></li>` : ''}${o.legs.map(([st, t, how]) => `<li><b>${st}</b><span>${t}</span><em>${how}</em></li>`).join('')}</ol>`;
   const jrLink = (o, base) => (o.search ? `<a class="jr" href="${routeUrl(o, base)}">Yahoo!乗換案内で遅れを確認 ›</a>` : '');
   // 候補1本分のカード。tag は「1本前」「1本後」などの見出し
   const itemHtml = (o, base, nowAbs, to, tag) => {
     const inner = `<div class="row"><span>${tag ? `<span class="tag">${tag}</span>` : ''}${o.tomorrow ? '明日 ' : ''}${fmt(o.leave)} 出発 <small>${o.leaveAbs - nowAbs >= 0 ? 'あと' + G.dur(o.leaveAbs - nowAbs) : tag ? '' : '出発時刻を過ぎています'}</small></span><span>${to} ${fmt(o.arrive)} 着</span></div>
-      <div class="sub">${o.legs.map(([st, t]) => `${st} ${t.split(' → ').pop()}`).join(' ・ ')}</div>`;
+      <div class="sub">${o.bus ? `🚌 並木大橋 ${fmt(o.bus[0])} 発 ・ ` : ''}${o.legs.map(([st, t]) => `${st} ${t.split(' → ').pop()}`).join(' ・ ')}</div>`;
     return o.search ? `<li><a class="card" style="display:block;color:inherit;text-decoration:none" href="${routeUrl(o, base)}">${inner}</a></li>` : `<li><div class="card">${inner}</div></li>`;
   };
 
@@ -788,7 +791,7 @@
     return { dir: tr.dir, dep, o, base: plan.base, nowAbs, done, boarded: tr.train != null ? tr.train : null };
   }
 
-  G.commute = { DEST, mySt, stName, placeName, destPlan, wentToday, rainMode: () => S.rain || 'auto', yahooUrl, rainy, HOLIDAYS, dir: () => S.dir, onboardList, board, flipDir, autoLocate, autoOn, PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
+  G.commute = { busText, DEST, mySt, stName, placeName, destPlan, wentToday, rainMode: () => S.rain || 'auto', yahooUrl, rainy, HOLIDAYS, dir: () => S.dir, onboardList, board, flipDir, autoLocate, autoOn, PLACES, getLoc, fromFor, locChips, handleLoc, trip, tripStart, tripEnd, tripMark, nowPlan, arrivePlan, routeUrl, open, init, dayLabel };
   // 秒まで数えるので、表示中は1秒ごとに描き直す（入力中は止める）
   G.reg('commute', { title: '通学', render, tick: 1, skipTick: () => document.activeElement && document.activeElement.id === 'lcArrive' });
 })();

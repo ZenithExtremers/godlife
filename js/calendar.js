@@ -168,7 +168,7 @@
       const first = campus[0], last = campus[campus.length - 1];
       const go = G.commute.arrivePlan('school', now, first.s, k, 'home').opts[0];
       if (go) {
-        add(go.leave, '🚪', '家を出る', `荒川沖 ${G.esc(go.legs[0][1])}・${G.esc(go.legs[0][2])}${G.commute.rainy() ? '・☔ バス' : ''}`, 'move');
+        add(go.leave, '🚪', '家を出る', `${go.bus ? G.commute.busText(go) + '・' : ''}荒川沖 ${G.esc(go.legs[0][1])}・${G.esc(go.legs[0][2])}`, 'move');
         add(go.arrive, '🏫', '大学に着く', first.s - go.arrive > 0 ? `${first.n}限の${G.dur(first.s - go.arrive)}前` : `${first.n}限にちょうど`, 'move');
       }
       const end = new Date(D); end.setMinutes(last.e);
@@ -184,7 +184,7 @@
       else add(toMin(e.start), '📌', G.esc(e.title), `${G.esc(e.start)}${e.end ? '–' + G.esc(e.end) : ''}${e.place ? '・📍' + G.esc(e.place) : ''}`, 'ev');
       const p = destPlans(e, day); if (!p) return;
       const nm = G.esc(G.commute.stName(p.st)), go = p.go && p.go.main, bk = p.back && p.back.main;
-      if (go) { add(go.leave, '🚪', `家を出る（${G.esc(e.title)}）`, go.legs[0][0] === '荒川沖' ? `荒川沖 ${G.esc(go.legs[0][1])}` : '', 'move'); add(go.arrive, '📍', `${G.esc(G.commute.placeName(p.st))}に着く`, `${nm}駅`, 'move'); }
+      if (go) { add(go.leave, '🚪', `家を出る（${G.esc(e.title)}）`, (go.bus ? G.commute.busText(go) + '・' : '') + (go.legs[0][0] === '荒川沖' ? `荒川沖 ${G.esc(go.legs[0][1])}` : ''), 'move'); add(go.arrive, '📍', `${G.esc(G.commute.placeName(p.st))}に着く`, `${nm}駅`, 'move'); }
       else if (p.go && p.go.manualNeeded) tops.push(`⚠ ${G.esc(e.title)}：荒川沖の時刻がまだです`);
       if (bk) { add(bk.leave, '🚃', `${G.esc(G.commute.placeName(p.st))}を出る`, '', 'move'); add(bk.arrive, '🏠', '家に着く', '', 'move'); }
     });

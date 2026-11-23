@@ -71,6 +71,7 @@
     if (left < 0) parts.push('⚠ もう間に合いません'); else if (left < 24 * 60) parts.push(`あと${G.dur(left)}`);
     parts.push(`大学 ${G.fmtMin(o.arrive)} 着`);
     if (plan.special) parts.push('2限の特例');
+    if (o.bus) parts.push(G.commute.busText(o)); // 雨の日：乗るバス
     let sub = parts.join('・');
     if (nd.onlineBefore.length) {
       const ob = nd.onlineBefore, lastOn = ob[ob.length - 1];
@@ -110,7 +111,7 @@
           const left = go.leave - m, moving = left < 0;
           out.push(row(`G.calendar.editById('${e.id}')`, `${dl}${G.esc(e.title)}${e.start ? ' ' + G.esc(e.start) : ''}（📍${nm}駅）${moving ? '・移動中' : 'に間に合うには'}${est}`,
             `${f(go.leave)} に家を出る`,
-            `${moving ? '' : 'あと' + G.dur(left) + '・'}${araGo}${G.esc(G.commute.placeName(p.st))}に ${f(go.arrive)} 着${!moving && p.go.after ? `<br>1本後：${f(p.go.after.leave)} 出発 → ${f(p.go.after.arrive)} 着` : ''}`));
+            `${moving ? '' : 'あと' + G.dur(left) + '・'}${go.bus ? G.commute.busText(go) + '・' : ''}${araGo}${G.esc(G.commute.placeName(p.st))}に ${f(go.arrive)} 着${!moving && p.go.after ? `<br>1本後：${f(p.go.after.leave)} 出発 → ${f(p.go.after.arrive)} 着` : ''}`));
         }
         if (k) continue; // 帰りは当日だけ
         if (p.back && p.back.manualNeeded && m <= p.back.T + 60) out.push(pendingRow(e, day, 'back', `${G.esc(e.title)}のあと（📍${nm}駅を ${f(p.back.T)} ごろ出る）`));
@@ -145,7 +146,7 @@
     const left = o.leave - plan.nowAbs;
     return row(`G.commute.open('school','now')`, label,
       `${o.tomorrow ? '明日 ' : ''}${G.fmtMin(o.leave)} に${P.short}を出る`,
-      `あと${G.dur(left)}・大学 ${G.fmtMin(o.arrive)} 着${note ? '・' + note : ''}${plan.after ? `<br>1本後：${plan.after.tomorrow ? '明日 ' : ''}${G.fmtMin(plan.after.leave)} 出発 → 大学 ${G.fmtMin(plan.after.arrive)} 着` : ''}`);
+      `あと${G.dur(left)}・${o.bus ? G.commute.busText(o) + '・' : ''}大学 ${G.fmtMin(o.arrive)} 着${note ? '・' + note : ''}${plan.after ? `<br>1本後：${plan.after.tomorrow ? '明日 ' : ''}${G.fmtMin(plan.after.leave)} 出発 → 大学 ${G.fmtMin(plan.after.arrive)} 着` : ''}`);
   }
 
   // ③ 帰り（授業中なら授業後の電車）
@@ -294,7 +295,7 @@
       if (nd && nd.k === 0) {
         const p = G.commute.arrivePlan('school', now, nd.first.s, 0, 'home'), o = p.opts[0];
         if (o) return { label: '🚪 家を出るまで', big: o.leave - p.nowAbs < 0 ? '出発時刻を過ぎています' : `あと${G.dur(o.leave - p.nowAbs)}`, main: `${G.fmtMin(o.leave)} に家を出る`,
-          sub: `${pfx(nd.first)}（${nd.first.c.name}）に間に合う・大学 ${G.fmtMin(o.arrive)} 着${G.commute.rainy() ? '・☔ バス' : ''}` };
+          sub: `${pfx(nd.first)}（${nd.first.c.name}）に間に合う・大学 ${G.fmtMin(o.arrive)} 着${o.bus ? '\n' + G.commute.busText(o) : ''}` };
       }
       const p = G.commute.nowPlan('school', now, 'home'), o = p.opts[0];
       if (o) return { label: '🚪 今から行くなら', big: `あと${G.dur(left(o.leave - p.nowAbs))}`, main: `${o.tomorrow ? '明日 ' : ''}${G.fmtMin(o.leave)} に家を出る`, sub: `大学 ${G.fmtMin(o.arrive)} 着${nd ? '・次の授業は ' + G.commute.dayLabel(nd.date, now) + pfx(nd.first) : ''}` };

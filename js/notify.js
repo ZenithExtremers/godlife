@@ -38,7 +38,7 @@
       const p1 = G.commute.arrivePlan('school', now, first.s, k, 'home');
       const o1 = p1.opts[0];
       if (o1) out.push({ kind: 'go', when: +D + o1.leave * 60e3, leave: o1.leave, day: G.ymd(D),
-        title: 'GOD Life：家を出る時間', msg: `${G.fmtMin(o1.leave)} に家を出る\n${first.n}限 ${G.fmtMin(first.s)}（${first.c.name}）・${o1.legs[0][0]} ${o1.legs[0][1]}${G.commute.rainy() ? '・☔ バス' : ''}` });
+        title: 'GOD Life：家を出る時間', msg: `${G.fmtMin(o1.leave)} に家を出る\n${first.n}限 ${G.fmtMin(first.s)}（${first.c.name}）・${o1.legs[0][0]} ${o1.legs[0][1]}${o1.bus ? '\n' + G.commute.busText(o1) : ''}` });
       // 帰り：最後の授業が終わってから乗れる電車
       const end = new Date(D); end.setMinutes(last.e);
       const p2 = G.commute.nowPlan('home', end, 'univ');
@@ -53,7 +53,7 @@
       for (const e of G.calendar.mineOn(day)) {
         const p = G.calendar.destPlans(e, day), o = p && p.go && p.go.main; if (!o) continue;
         out.push({ kind: 'dest-' + e.id, when: +D + o.leave * 60e3, leave: o.leave, day,
-          title: 'GOD Life：家を出る時間', msg: `${G.fmtMin(o.leave)} に家を出る\n${e.title} ${e.start}（${G.commute.stName(p.st)}駅）・${G.commute.placeName(p.st)} ${G.fmtMin(o.arrive)} 着` });
+          title: 'GOD Life：家を出る時間', msg: `${G.fmtMin(o.leave)} に家を出る\n${e.title} ${e.start}（${G.commute.stName(p.st)}駅）・${G.commute.placeName(p.st)} ${G.fmtMin(o.arrive)} 着${o.bus ? '\n' + G.commute.busText(o) : ''}` });
       }
     }
     return out;
