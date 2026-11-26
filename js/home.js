@@ -269,7 +269,7 @@
   function render() {
     const now = new Date();
     const cs = G.classes.status(now);
-    G.$('v-home').innerHTML = miniBar(now) + tripCard(now, cs) + hero(now, cs) + G.life.reviewCard(now) + commuteTile(now, cs) + G.life.itemsCard(now) + G.weather.card() + kadaiTile() + menuTile(now) + todayList(now, cs);
+    G.$('v-home').innerHTML = miniBar(now) + G.life.trainBanner() + tripCard(now, cs) + hero(now, cs) + G.life.reviewCard(now) + commuteTile(now, cs) + G.life.wakeCard(now) + G.life.itemsCard(now) + G.life.subpalCard(now) + G.weather.card() + kadaiTile() + menuTile(now) + todayList(now, cs);
   }
 
   // 手順をタップ：最後（着く）なら到着で終わり、それ以外はそこまで終わったことにする

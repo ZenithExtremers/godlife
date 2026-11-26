@@ -1,0 +1,37 @@
+name: 常磐線の運行情報
+
+on:
+  schedule:
+    # 日本時間 5時〜23時台に10分おき（GitHubの都合で遅れることがあります）
+    - cron: "*/10 20-23,0-14 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: traininfo
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 前回の結果を読む
+        run: |
+          git fetch -q origin status 2>/dev/null && git show FETCH_HEAD:traininfo.json > prev.json || echo '{}' > prev.json
+
+      - name: 運行情報をチェック
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python scraper/traininfo.py prev.json traininfo.json
+
+      - name: status ブランチに保存（アプリが読む）
+        run: |
+          mkdir -p /tmp/st && cp traininfo.json /tmp/st/ && cd /tmp/st
+          git init -q -b status && git add traininfo.json
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" commit -qm "運行情報 $(date -u +%FT%TZ)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" status

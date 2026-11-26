@@ -48,13 +48,13 @@
     for (let i = 0; i < 42; i++) {
       const d = addDays(start, i), k = ymd(d);
       if (i >= 35 && d.getMonth() !== m) break; // 6週目が丸ごと翌月なら出さない
-      const u = uniOn(k), my = mineOn(k), kd = kadaiOn(k);
+      const u = uniOn(k), my = mineOn(k), kd = kadaiOn(k), sp = G.life.subpalEvents(k, k);
       const cls = ['cal-d', d.getMonth() !== m && 'out', k === today && 'today', k === st.sel && 'sel',
         (d.getDay() === 0 || holiday(k)) && 'sun', d.getDay() === 6 && 'sat', u.some((e) => /休|休業|休講/.test(e.kind || e.title)) && 'off'].filter(Boolean).join(' ');
-      const dots = (u.length ? '<i class="dot-u"></i>' : '') + (kd.length ? '<i class="dot-k"></i>' : '') + (my.length ? '<i class="dot-m"></i>' : '');
+      const dots = (u.length ? '<i class="dot-u"></i>' : '') + (kd.length ? '<i class="dot-k"></i>' : '') + (my.length ? '<i class="dot-m"></i>' : '') + (sp.length ? '<i class="dot-s"></i>' : '');
       h += `<button class="${cls}" data-day="${k}"><span>${d.getDate()}</span><em>${dots}</em></button>`;
     }
-    h += '</div><div class="cal-legend"><span><i class="dot-u"></i>大学</span><span><i class="dot-k"></i>課題の締切</span><span><i class="dot-m"></i>自分の予定</span></div>';
+    h += '</div><div class="cal-legend"><span><i class="dot-u"></i>大学</span><span><i class="dot-k"></i>課題の締切</span><span><i class="dot-m"></i>自分の予定</span><span><i class="dot-s"></i>サブスク</span></div>';
     return h;
   }
 
@@ -65,7 +65,8 @@
     const rows = [];
     u.forEach((e) => rows.push(`<div class="ci"><span class="tag u">${G.esc(e.kind || '大学')}</span><div class="ct"><b>${G.esc(e.title)}</b>${e.end && e.end !== e.date ? `<small>${md(e.date)}〜${md(e.end)}</small>` : ''}</div></div>`));
     kd.forEach((i) => rows.push(`<div class="ci" onclick="G.go('kadai')"><span class="tag k">締切 ${G.esc(i.due.slice(11))}</span><div class="ct"><b>${G.esc(i.title)}</b><small>${G.esc(i.teacher || '')}${i.teacher ? '・' : ''}${G.esc(i.remain)}</small></div></div>`));
-    my.forEach((e) => rows.push(`<div class="ci" data-edit="${e.id}"><span class="tag m">${e.allDay ? '終日' : `${G.esc(e.start || '')}${e.end ? '–' + G.esc(e.end) : ''}`}</span><div class="ct"><b>${G.esc(e.title)}</b><small>${e.place ? '📍' + G.esc(e.place) + '駅　' : ''}${e.repeat === 'weekly' ? '🔁 毎週' + wd(e.date) + '曜' : ''}${e.repeat === 'weekly' && e.memo ? '・' : ''}${G.esc(e.memo || '')}</small>${e.job ? `<small>💼 ${G.life.hrs(G.life.shiftMin(e))}${e.brk ? `（休憩${e.brk}分）` : ''}</small>` : ''}${e.items || (e.job && G.life.jobOf(e.job) && G.life.jobOf(e.job).items) ? `<small>🎒 ${G.esc(G.life.split(e.items).concat(e.job && G.life.jobOf(e.job) ? G.life.split(G.life.jobOf(e.job).items) : []).join('、'))}</small>` : ''}${destNote(e, day)}${routeLinks(e, day)}</div></div>`));
+    my.forEach((e) => rows.push(`<div class="ci" data-edit="${e.id}"><span class="tag m">${e.allDay ? '終日' : `${G.esc(e.start || '')}${e.end ? '–' + G.esc(e.end) : ''}`}</span><div class="ct"><b>${G.esc(e.title)}</b><small>${e.place ? '📍' + G.esc(e.place) + '駅　' : ''}${e.repeat === 'weekly' ? '🔁 毎週' + wd(e.date) + '曜' : ''}${e.repeat === 'weekly' && e.memo ? '・' : ''}${G.esc(e.memo || '')}</small>${e.job ? `<small>💼 ${G.life.hrs(G.life.shiftMin(e))}${e.brk ? `（休憩${e.brk}分）` : ''}</small>` : ''}${e.items || (e.job && G.life.jobOf(e.job) && G.life.jobOf(e.job).items) ? `<small>🎒 ${G.esc(G.life.split(e.items).concat(e.job && G.life.jobOf(e.job) ? G.life.split(G.life.jobOf(e.job).items) : []).join('、'))}</small>` : ''}${destNote(e, day)}${routeLinks(e, day)}${machiLink(e, day) ? `<span class="rl">${machiLink(e, day)}</span>` : ''}</div></div>`));
+    G.life.subpalEvents(day, day).forEach((x) => rows.push(`<a class="ci" href="${G.life.SUBPAL_URL}" style="text-decoration:none;color:inherit"><span class="tag s">${x.type === 'trial' ? '無料期間' : 'サブスク'}</span><div class="ct"><b>${G.esc(G.life.subLabel(x))}</b><small>SubPal で見る</small></div></a>`));
     h += rows.length ? rows.join('') : '<div class="muted">予定はありません</div>';
     h += '</div>';
     if (G.kadai.summary().locked) h += '<p class="muted">課題の締切は、「課題」タブで合言葉を入れると表示されます。</p>';
@@ -159,6 +160,8 @@
     const add = (t, icon, title, sub, cls) => items.push({ t, icon, title, sub: sub || '', cls: cls || '' });
     // 終日のもの（大学の行事・祝日・終日の予定）
     if (holiday(day)) tops.push('🎌 祝日');
+    G.life.subpalEvents(day, day).forEach((x) => tops.push(`💳 ${G.esc(G.life.subLabel(x))}`));
+    const wk = G.life.wakeFor(D); if (wk) add(wk.wake, '⏰', '起きる', `支度${G.life.prepMin()}分・${G.esc(wk.why)}`, 'move');
     uniOn(day).forEach((e) => tops.push(`🏫 ${G.esc(e.title)}`));
     // 授業と、大学への行き帰り
     const list = G.classes.dayList(D);
@@ -212,6 +215,29 @@
     return h;
   }
   const toMin = (v) => { const [hh, mm] = String(v).split(':').map(Number); return hh * 60 + (mm || 0); };
+
+  /* ---------- まちあわせ（待ち合わせアプリ）への入口 ---------- */
+  const machiUrl = () => G.load('gl.machiUrl', '');
+  // 予定のタイトル・日時・場所を入れた状態で、まちあわせの作成画面を開くリンク
+  function machiLink(e, day) {
+    const base = machiUrl(); if (!base || !e.start) return '';
+    const st = e.dest && G.commute.mySt().find((m) => m.id === e.dest);
+    const place = st ? (st.label ? `${G.commute.stName(st)}駅（${st.label}）` : G.commute.stName(st) + '駅') : e.place ? e.place + '駅' : '';
+    const q = new URLSearchParams({ title: e.title, time: `${day}T${e.start}`, ...(place ? { place } : {}), ...(e.memo ? { note: e.memo } : {}) });
+    return `<a class="btn" href="${G.esc(base.replace(/\/+$/, ''))}/?${q}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📍 まちあわせを作る</a>`;
+  }
+  function openMachiUrl() {
+    G.openEditor(`<h3>📍 まちあわせのURL</h3><p>まちあわせアプリ（Render で公開したもの）の URL を入れると、カレンダーの予定から「📍 まちあわせを作る」で、タイトル・日時・場所を入れた状態の作成画面を開けます。</p>
+      <input id="mcU" value="${G.esc(machiUrl())}" placeholder="https://machiawase-xxxx.onrender.com" autocapitalize="off" spellcheck="false">
+      <button class="btn pri full" id="mcSave">保存</button><button class="btn full" id="mcClose">閉じる</button>`, (root) => {
+      root.querySelector('#mcSave').onclick = () => {
+        const v = root.querySelector('#mcU').value.trim();
+        if (v && !/^https:\/\//.test(v)) { G.toast('https:// から始まる URL を入れてください'); return; }
+        G.save('gl.machiUrl', v); G.closeEditor(); G.toast(v ? '保存しました' : 'まちあわせのURLを消しました');
+      };
+      root.querySelector('#mcClose').onclick = G.closeEditor;
+    });
+  }
 
   /* ---------- 予定の編集 ---------- */
   function edit(id, day, preset) {
@@ -335,6 +361,6 @@
   // ほかの画面から：予定を新しく作る／ふりかえりを開く
   const newEvent = (day, preset) => edit(null, day, preset);
   function openWeek(key) { st.view = 'week'; st.wk = key; if (G.cur === 'class') render(); else G.go('class'); }
-  G.calendar = { newEvent, openWeek, editById, destYahoo, destPlans, routeLinks, fromStation, view: (x) => { st.view = x; if (G.cur === 'class') render(); }, mineOn, uniOn };
+  G.calendar = { openMachiUrl, machiLink, newEvent, openWeek, editById, destYahoo, destPlans, routeLinks, fromStation, view: (x) => { st.view = x; if (G.cur === 'class') render(); }, mineOn, uniOn };
   G.reg('class', { title: 'カレンダー', render, tick: 60, skipTick: () => st.view === 'tt', onShow: () => { loadUni().then(() => G.cur === 'class' && render()); if (!G.kadai.summary().locked) G.kadai.refresh(); } });
 })();

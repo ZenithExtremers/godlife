@@ -317,3 +317,6 @@ label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .rv-c{background:var(--soft);border-radius:10px;padding:8px;text-align:center}
 .rv-c b{display:block;font-size:17px}
 .rv-c span{font-size:11px;color:var(--sub)}
+.dot-s{background:#e67e22}
+.ci .tag.s{background:#e67e22}
+.gl-wx{white-space:pre-line}

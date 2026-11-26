@@ -202,7 +202,98 @@
     return `授業${s.cls}コマ・出かけた日${s.went}日・課題${s.done.length}件完了${s.shiftMin ? '・バイト' + hrs(s.shiftMin) : ''}${s.bukatsu ? '・部活など' + s.bukatsu + '回' : ''}\nアプリで「よかったこと」「来週の目標」を書こう`;
   }
 
-  G.life = {
+  /* ===================== SubPal（同じスマホのサブスク管理アプリ）を読む ===================== */
+  // SubPal のデータ（localStorage 'subpal.v1'）は同じ zenithextremers.github.io なので読める。書き換えはしない
+  const SUBPAL_URL = 'https://zenithextremers.github.io/subpal/';
+  function subpalSubs() {
+    try { const s = JSON.parse(localStorage.getItem('subpal.v1') || 'null'); return (s && s.subs || []).filter((x) => x.status === 'active'); } catch (e) { return []; }
+  }
+  // 支払い日を周期で進める（SubPal と同じ考え方：毎月・毎年・毎週 × interval）
+  function nextCycle(ds, sub) {
+    const d = parse(ds), i = sub.interval || 1;
+    if (sub.cycle === 'week') d.setDate(d.getDate() + 7 * i);
+    else { const day = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + (sub.cycle === 'year' ? 12 : 1) * i); d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())); }
+    return G.ymd(d);
+  }
+  // from〜to（ymd）のあいだの支払い・無料期間の終わり
+  function subpalEvents(from, to) {
+    const out = [];
+    for (const s of subpalSubs()) {
+      if (s.trialEnd && s.trialEnd >= from && s.trialEnd <= to) out.push({ day: s.trialEnd, type: 'trial', s });
+      let d = s.nextDate, g = 0;
+      while (d && d <= to && g++ < 60) { if (d >= from && d !== s.trialEnd) out.push({ day: d, type: 'bill', s }); d = nextCycle(d, s); }
+    }
+    return out.sort((a, b) => a.day.localeCompare(b.day));
+  }
+  const subLabel = (x) => (x.type === 'trial' ? `${x.s.name} の無料期間が終わる` : `${x.s.name} の支払い${x.s.price ? ' ' + yen(Number(x.s.price)) : ''}`);
+  // ホームのカード：7日以内
+  function subpalCard(now = new Date()) {
+    const today = G.ymd(now), ev = subpalEvents(today, G.ymd(addDays(now, 7)));
+    if (!ev.length) return '';
+    const dl = (d) => { const k = Math.round((parse(d) - parse(today)) / 864e5); return k === 0 ? '今日' : k === 1 ? '明日' : md(d); };
+    return `<a class="card tile" href="${SUBPAL_URL}" style="text-decoration:none;color:inherit"><div class="ic">💳</div><div class="tx"><div class="t1">サブスク（SubPal）</div>
+      ${ev.slice(0, 3).map((x) => `<div class="t3" style="white-space:normal">${x.type === 'trial' ? '⚠ ' : ''}<b>${dl(x.day)}</b> ${G.esc(subLabel(x))}</div>`).join('')}${ev.length > 3 ? `<div class="t3">ほか${ev.length - 3}件</div>` : ''}</div><div class="go">›</div></a>`;
+  }
+
+  /* ===================== 起きる時刻 ===================== */
+  // 家を出る時刻 − 支度の時間。その日の一番早い「家を出る」（大学・バイト・部活）から逆算
+  const prepMin = () => Number(G.load('gl.prep', 60)) || 60;
+  function firstLeave(D) {
+    const now = new Date(), k = Math.round((new Date(D).setHours(0, 0, 0, 0) - new Date(now).setHours(0, 0, 0, 0)) / 864e5);
+    const cand = [];
+    const campus = G.classes.dayList(D).filter((x) => !G.classes.isOnline(x.c));
+    if (campus.length) { const o = G.commute.arrivePlan('school', now, campus[0].s, k, 'home').opts[0]; if (o) cand.push({ leave: o.leave, why: `${campus[0].n}限 ${campus[0].c.name}` }); }
+    const day = G.ymd(D);
+    for (const e of G.calendar.mineOn(day)) {
+      const p = G.calendar.destPlans(e, day), o = p && p.go && p.go.main;
+      if (o) cand.push({ leave: o.leave, why: e.title });
+    }
+    cand.sort((a, b) => a.leave - b.leave);
+    return cand[0] || null;
+  }
+  function wakeFor(D) { const f1 = firstLeave(D); return f1 ? { wake: f1.leave - prepMin(), leave: f1.leave, why: f1.why } : null; }
+  // ホーム：18時以降は明日の起きる時刻
+  function wakeCard(now = new Date()) {
+    if (now.getHours() < 18) return '';
+    const w = wakeFor(addDays(now, 1)); if (!w) return '';
+    return `<div class="card tile" onclick="G.life.openPrep()"><div class="ic">⏰</div><div class="tx"><div class="t1">明日起きる時刻</div><div class="t2">${f(w.wake)} に起きる</div>
+      <div class="t3">${f(w.leave)} に家を出る（${G.esc(w.why)}）・支度${prepMin()}分</div></div><div class="go">›</div></div>`;
+  }
+  function openPrep() {
+    G.openEditor(`<h3>⏰ 起きる時刻</h3><p>家を出る時刻から、支度の時間を引いて「起きる時刻」を出します。前の日の夜にホームと通知でお知らせします。</p>
+      <label class="f">支度にかかる時間</label><select id="prepM">${[30, 45, 60, 75, 90, 120].map((m) => `<option value="${m}"${m === prepMin() ? ' selected' : ''}>${m}分</option>`).join('')}</select>
+      <button class="btn pri full" id="prepSave">保存</button><button class="btn full" id="prepClose">閉じる</button>`, (root) => {
+      root.querySelector('#prepSave').onclick = () => { G.save('gl.prep', Number(root.querySelector('#prepM').value)); G.closeEditor(); if (G.mods[G.cur]) G.mods[G.cur].render(); };
+      root.querySelector('#prepClose').onclick = G.closeEditor;
+    });
+  }
+
+  /* ===================== 常磐線の運行情報（GitHub Actions が10分おきに確認） ===================== */
+  const TI_URL = 'https://raw.githubusercontent.com/ZenithExtremers/godlife/status/traininfo.json';
+  let ti = G.load('gl.traininfo', null), tiBusy = false;
+  async function loadTrain() {
+    if (tiBusy) return ti; tiBusy = true;
+    try { const r = await fetch(TI_URL + '?t=' + Date.now(), { cache: 'no-store' }); if (r.ok) { ti = await r.json(); G.save('gl.traininfo', ti); } } catch (e) {}
+    tiBusy = false; return ti;
+  }
+  // 40分以内に確認できていて、常磐線に遅延・運休があるとき
+  const trainFresh = () => ti && ti.ok && Date.now() - Date.parse(ti.checked) < 40 * 60e3;
+  const trainTrouble = () => (trainFresh() ? ti.trouble || [] : []);
+  function trainBanner() {
+    const t = trainTrouble(); if (!t.length) return '';
+    return `<a class="banner" href="https://transit.yahoo.co.jp/diainfo/area/4" target="_blank" rel="noopener" style="display:block;text-decoration:none">⚠ <b>${t.map((l) => `${G.esc(l.name)}：${G.esc(l.status)}`).join('／')}</b>
+      ${t[0].detail ? `<div style="margin-top:2px">${G.esc(t[0].detail.slice(0, 90))}</div>` : ''}<div style="font-size:11px;margin-top:2px">${new Date(ti.checked).getHours()}:${G.pad(new Date(ti.checked).getMinutes())} 時点・時刻表どおりに走らないかもしれません（タップで運行情報）</div></a>`;
+  }
+  // 通学タブ：問題なしのときも小さく
+  function trainNote() {
+    if (!ti) return '';
+    const at = `${new Date(ti.checked).getHours()}:${G.pad(new Date(ti.checked).getMinutes())}`;
+    if (!trainFresh()) return `<div class="muted" style="margin:-4px 0 8px">常磐線の運行情報：確認できていません（最終 ${at}）</div>`;
+    return trainTrouble().length ? trainBanner() : `<div class="muted" style="margin:-4px 0 8px">✅ 常磐線：遅延・運休の情報なし（${at} 時点）</div>`;
+  }
+
+  G.life = { loadTrain, trainTrouble, trainBanner, trainNote,
+    subpalEvents, subLabel, subpalCard, SUBPAL_URL, wakeFor, wakeCard, openPrep, prepMin,
     jobs, jobOf, shiftMin, monthSummary, openJobs,
     itemsFor, itemsHtml, itemsCard, split,
     logDone, logWent, monday, weekStats, reviewHtml, saveReview, reviewCard, reviewMsg,

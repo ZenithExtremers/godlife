@@ -53,7 +53,7 @@
   G.$('mLogout').onclick = () => { sheet.classList.remove('show'); G.kadai.logout(); G.go('kadai'); };
 
   // バックアップ（時間割・通学設定・教室の追記・完了印）。合言葉は含めない
-  const BK = ['gl.classes', 'gl.classOpt', 'gl.commute', 'gl.roomsLocal', 'kadai-done', 'gl.theme', 'gl.placePos', 'gl.events', 'gl.ntfy', 'gl.glance', 'gl.mySt', 'gl.jobs', 'gl.reviews', 'gl.itemsChk', 'gl.doneLog', 'gl.wentLog'];
+  const BK = ['gl.classes', 'gl.classOpt', 'gl.commute', 'gl.roomsLocal', 'kadai-done', 'gl.theme', 'gl.placePos', 'gl.events', 'gl.ntfy', 'gl.glance', 'gl.mySt', 'gl.jobs', 'gl.reviews', 'gl.itemsChk', 'gl.doneLog', 'gl.wentLog', 'gl.prep', 'gl.machiUrl'];
   G.$('mBackup').onclick = () => {
     const o = {}; BK.forEach((k) => { const v = G.raw(k); if (v != null) o[k] = v; });
     const txt = 'GODLIFE1:' + btoa(unescape(encodeURIComponent(JSON.stringify(o))));
@@ -86,11 +86,14 @@
   function paintGps() { G.$('mGps').textContent = `📍 開いたときに現在地を取得：${G.commute.autoOn() ? 'オン' : 'オフ'}`; }
   G.$('mGps').onclick = () => { G.save('gl.autoGps', !G.commute.autoOn()); paintGps(); if (G.commute.autoOn()) G.commute.autoLocate(rerender); };
   paintGps();
+  G.$('mPrep').onclick = () => { G.$('sheet').classList.remove('show'); G.life.openPrep(); };
+  G.$('mMachi').onclick = () => { G.$('sheet').classList.remove('show'); G.calendar.openMachiUrl(); };
   G.$('mNotify').onclick = () => { G.$('sheet').classList.remove('show'); G.notify.open(); };
   G.$('mSync').onclick = () => { G.$('sheet').classList.remove('show'); G.sync.open(); };
   // 天気と通知の予約（開いたとき・画面に戻ったとき）
   const refreshExtra = () => {
     // 雨モードが天気で変わるので、通知の予約は天気を読んでから
+    G.life.loadTrain().then(() => { if (G.cur === 'home' || G.cur === 'commute') G.mods[G.cur].render(); });
     G.weather.load().then(() => { if (G.cur === 'home' || G.cur === 'commute') G.mods[G.cur].render(); })
       .finally(() => { G.notify.schedule().catch(() => {}); G.sync.auto(); });
   };
@@ -101,7 +104,8 @@
     const g = G.home.glance();
     G.$('glLabel').textContent = g.label; G.$('glBig').textContent = g.big; G.$('glMain').textContent = g.main; G.$('glSub').textContent = g.sub;
     const w = G.weather.probIn(0, G.ymd(new Date()), new Date().getHours(), 23);
-    G.$('glWx').textContent = w == null ? '' : `☂ 家の周り ${w}%（これから）${G.commute.rainy() ? '・雨モード' : ''}`;
+    const tt = G.life.trainTrouble();
+    G.$('glWx').textContent = (tt.length ? `⚠ ${tt.map((l) => l.name + '：' + l.status).join('／')}\n` : '') + (w == null ? '' : `☂ 家の周り ${w}%（これから）${G.commute.rainy() ? '・雨モード' : ''}`);
     // 今日の持ち物（タップでチェック）
     const it = G.life.itemsHtml(G.ymd(new Date()), true);
     G.$('glItems').innerHTML = it ? `<div class="gl-it-h">🎒 今日の持ち物</div>${it}` : '';

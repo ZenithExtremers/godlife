@@ -73,6 +73,10 @@
         if (items.length) out.push({ key: `items:${G.ymd(tm)}:${items.map((i) => i.name).join('|')}`, at: +today + c.itemsAt * 3600e3,
           title: 'GOD Life：明日の持ち物', msg: items.map((i) => '・' + i.name).join('\n') });
       }
+      // 明日起きる時刻（持ち物と同じ時刻。持ち物の通知が「しない」でも21時に）
+      const wk = G.life.wakeFor(tm);
+      if (wk) out.push({ key: `wake:${G.ymd(tm)}:${wk.wake}`, at: +today + (c.itemsAt || 21) * 3600e3,
+        title: `GOD Life：明日は ${G.fmtMin(wk.wake)} 起き`, msg: `${G.fmtMin(wk.leave)} に家を出る（${wk.why}）\n支度${G.life.prepMin()}分で計算` });
       if (c.review && k === 0 && today.getDay() === 0) { // 日曜になってから予約（まとめの数字を新しくするため）
         const mon = G.life.monday(today);
         out.push({ key: `review:${G.ymd(mon)}`, at: +today + 20 * 3600e3, title: 'GOD Life：一週間のふりかえり', msg: G.life.reviewMsg(mon) });

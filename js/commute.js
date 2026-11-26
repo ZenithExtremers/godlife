@@ -608,7 +608,7 @@
     const now = new Date();
     const fromK = fromFor(S.dir);
     const to = S.dir === 'home' ? '家' : '大学';
-    let h = locCard();
+    let h = locCard() + G.life.trainNote();
     h += `<div class="seg"><button data-dir="school" class="${S.dir === 'school' ? 'on' : ''}">行き（→大学）</button><button data-dir="home" class="${S.dir === 'home' ? 'on' : ''}">帰り（→家）</button></div>
       <div class="seg"><button data-mode="now" class="${S.mode === 'now' ? 'on' : ''}">今すぐ</button><button data-mode="arrive" class="${S.mode === 'arrive' ? 'on' : ''}">到着時刻を指定</button></div>`;
     if (!fromK) {
