@@ -53,7 +53,7 @@
   G.$('mLogout').onclick = () => { sheet.classList.remove('show'); G.kadai.logout(); G.go('kadai'); };
 
   // バックアップ（時間割・通学設定・教室の追記・完了印）。合言葉は含めない
-  const BK = ['gl.classes', 'gl.classOpt', 'gl.commute', 'gl.roomsLocal', 'kadai-done', 'gl.theme', 'gl.placePos', 'gl.events', 'gl.ntfy', 'gl.glance', 'gl.mySt'];
+  const BK = ['gl.classes', 'gl.classOpt', 'gl.commute', 'gl.roomsLocal', 'kadai-done', 'gl.theme', 'gl.placePos', 'gl.events', 'gl.ntfy', 'gl.glance', 'gl.mySt', 'gl.jobs', 'gl.reviews', 'gl.itemsChk', 'gl.doneLog', 'gl.wentLog'];
   G.$('mBackup').onclick = () => {
     const o = {}; BK.forEach((k) => { const v = G.raw(k); if (v != null) o[k] = v; });
     const txt = 'GODLIFE1:' + btoa(unescape(encodeURIComponent(JSON.stringify(o))));
@@ -102,6 +102,9 @@
     G.$('glLabel').textContent = g.label; G.$('glBig').textContent = g.big; G.$('glMain').textContent = g.main; G.$('glSub').textContent = g.sub;
     const w = G.weather.probIn(0, G.ymd(new Date()), new Date().getHours(), 23);
     G.$('glWx').textContent = w == null ? '' : `☂ 家の周り ${w}%（これから）${G.commute.rainy() ? '・雨モード' : ''}`;
+    // 今日の持ち物（タップでチェック）
+    const it = G.life.itemsHtml(G.ymd(new Date()), true);
+    G.$('glItems').innerHTML = it ? `<div class="gl-it-h">🎒 今日の持ち物</div>${it}` : '';
   }
   // 大学にまだ行っていない日だけ：今日は対面授業があり、1コマ目の前で、家（または自動）にいて、まだ家を出ていない
   function glanceToday() {
@@ -110,12 +113,17 @@
     if (loc && loc !== 'home') return false;
     return !G.commute.trip(now) && !G.commute.wentToday();
   }
-  function openGlance() {
-    if (!glanceOn() || !glanceToday()) return;
+  // force：ホームの一番上の行から、いつでも開く
+  function openGlance(force) {
+    if (!force && (!glanceOn() || !glanceToday())) return;
     paintGlance(); G.$('glance').hidden = false;
     clearInterval(glTimer); glTimer = setInterval(paintGlance, 15000);
   }
-  G.$('glance').onclick = () => { G.$('glance').hidden = true; clearInterval(glTimer); };
+  G.openGlanceNow = () => openGlance(true);
+  G.$('glance').onclick = (e) => {
+    if (e.target.closest('[data-item]')) return; // 持ち物のチェックでは閉じない
+    G.$('glance').hidden = true; clearInterval(glTimer);
+  };
   const paintGl = () => { G.$('mGlance').textContent = `⚡ シンプル表示（大学に行く日の出発前）：${glanceOn() ? 'オン' : 'オフ'}`; };
   G.$('mGlance').onclick = () => { G.save('gl.glance', !glanceOn()); paintGl(); };
   paintGl();

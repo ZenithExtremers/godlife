@@ -296,3 +296,24 @@ label.f{display:block;font-size:13px;color:var(--sub);margin-top:8px}
 .dl-now{border-top:2px solid var(--accent);margin:2px 0;position:relative;height:0}
 .dl-now span{position:absolute;right:0;top:-10px;background:var(--accent);color:#123e50;font-size:11px;font-weight:800;border-radius:6px;padding:1px 6px}
 .gl-sub{white-space:pre-line}
+/* ウィジェット風の1行 */
+.mini{display:flex;align-items:center;gap:8px;width:100%;border:0;border-radius:14px;padding:10px 14px;margin:2px 0 10px;background:linear-gradient(135deg,#2e86a8,#123e50);color:#fff;text-align:left;cursor:pointer;font-family:inherit}
+.mini-l{font-size:12px;opacity:.85;white-space:nowrap}
+.mini b{font-size:17px;white-space:nowrap}
+.mini-m{flex:1;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.95}
+.mini-go{opacity:.7}
+/* 持ち物チェック */
+.items{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 4px}
+.items .it{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:10px;padding:7px 10px;font-size:14px;cursor:pointer;font-family:inherit}
+.items .it.on{background:var(--soft);color:var(--sub);text-decoration:line-through}
+.gl-items{margin-top:16px}
+.gl-it-h{font-size:14px;opacity:.85;margin-bottom:4px}
+.glance .items{justify-content:center}
+.glance .items .it{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3);color:#fff}
+.glance .items .it.on{background:rgba(255,255,255,.05);color:rgba(255,255,255,.6)}
+.glance .muted{color:rgba(255,255,255,.7)}
+/* ふりかえり */
+.rv-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.rv-c{background:var(--soft);border-radius:10px;padding:8px;text-align:center}
+.rv-c b{display:block;font-size:17px}
+.rv-c span{font-size:11px;color:var(--sub)}

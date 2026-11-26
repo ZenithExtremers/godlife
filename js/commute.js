@@ -741,7 +741,7 @@
   /* ---- 「家を出た」「大学を出た」：出た時刻から乗れる電車をたどる ---- */
   const TKEY = 'gl.trip';
   // 今日もう大学へ向かったか（シンプル表示を出すかどうかに使う）
-  const markWent = () => G.save('gl.went', G.ymd(new Date()));
+  const markWent = () => { G.save('gl.went', G.ymd(new Date())); if (G.life) G.life.logWent(); }; // ふりかえり用にも記録
   const wentToday = () => G.load('gl.went', '') === G.ymd(new Date());
   function tripStart(dir) {
     if (dir === 'school') markWent();

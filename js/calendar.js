@@ -65,7 +65,7 @@
     const rows = [];
     u.forEach((e) => rows.push(`<div class="ci"><span class="tag u">${G.esc(e.kind || '大学')}</span><div class="ct"><b>${G.esc(e.title)}</b>${e.end && e.end !== e.date ? `<small>${md(e.date)}〜${md(e.end)}</small>` : ''}</div></div>`));
     kd.forEach((i) => rows.push(`<div class="ci" onclick="G.go('kadai')"><span class="tag k">締切 ${G.esc(i.due.slice(11))}</span><div class="ct"><b>${G.esc(i.title)}</b><small>${G.esc(i.teacher || '')}${i.teacher ? '・' : ''}${G.esc(i.remain)}</small></div></div>`));
-    my.forEach((e) => rows.push(`<div class="ci" data-edit="${e.id}"><span class="tag m">${e.allDay ? '終日' : `${G.esc(e.start || '')}${e.end ? '–' + G.esc(e.end) : ''}`}</span><div class="ct"><b>${G.esc(e.title)}</b><small>${e.place ? '📍' + G.esc(e.place) + '駅　' : ''}${e.repeat === 'weekly' ? '🔁 毎週' + wd(e.date) + '曜' : ''}${e.repeat === 'weekly' && e.memo ? '・' : ''}${G.esc(e.memo || '')}</small>${destNote(e, day)}${routeLinks(e, day)}</div></div>`));
+    my.forEach((e) => rows.push(`<div class="ci" data-edit="${e.id}"><span class="tag m">${e.allDay ? '終日' : `${G.esc(e.start || '')}${e.end ? '–' + G.esc(e.end) : ''}`}</span><div class="ct"><b>${G.esc(e.title)}</b><small>${e.place ? '📍' + G.esc(e.place) + '駅　' : ''}${e.repeat === 'weekly' ? '🔁 毎週' + wd(e.date) + '曜' : ''}${e.repeat === 'weekly' && e.memo ? '・' : ''}${G.esc(e.memo || '')}</small>${e.job ? `<small>💼 ${G.life.hrs(G.life.shiftMin(e))}${e.brk ? `（休憩${e.brk}分）` : ''}</small>` : ''}${e.items || (e.job && G.life.jobOf(e.job) && G.life.jobOf(e.job).items) ? `<small>🎒 ${G.esc(G.life.split(e.items).concat(e.job && G.life.jobOf(e.job) ? G.life.split(G.life.jobOf(e.job).items) : []).join('、'))}</small>` : ''}${destNote(e, day)}${routeLinks(e, day)}</div></div>`));
     h += rows.length ? rows.join('') : '<div class="muted">予定はありません</div>';
     h += '</div>';
     if (G.kadai.summary().locked) h += '<p class="muted">課題の締切は、「課題」タブで合言葉を入れると表示されます。</p>';
@@ -181,7 +181,7 @@
     // 自分の予定・部活の行き帰り
     mineOn(day).forEach((e) => {
       if (e.allDay || !e.start) tops.push(`📌 ${G.esc(e.title)}`);
-      else add(toMin(e.start), '📌', G.esc(e.title), `${G.esc(e.start)}${e.end ? '–' + G.esc(e.end) : ''}${e.place ? '・📍' + G.esc(e.place) : ''}`, 'ev');
+      else add(toMin(e.start), e.job ? '💼' : '📌', G.esc(e.title) + (e.job ? `（${G.life.hrs(G.life.shiftMin(e))}）` : ''), `${G.esc(e.start)}${e.end ? '–' + G.esc(e.end) : ''}${e.place ? '・📍' + G.esc(e.place) : ''}`, 'ev');
       const p = destPlans(e, day); if (!p) return;
       const nm = G.esc(G.commute.stName(p.st)), go = p.go && p.go.main, bk = p.back && p.back.main;
       if (go) { add(go.leave, '🚪', `家を出る（${G.esc(e.title)}）`, (go.bus ? G.commute.busText(go) + '・' : '') + (go.legs[0][0] === '荒川沖' ? `荒川沖 ${G.esc(go.legs[0][1])}` : ''), 'move'); add(go.arrive, '📍', `${G.esc(G.commute.placeName(p.st))}に着く`, `${nm}駅`, 'move'); }
@@ -198,7 +198,8 @@
     const wx = G.weather && G.weather.probIn(0, day, 6, 22);
     let h = `<div class="cal-head"><button class="btn" data-dmv="-1" aria-label="前の日">‹</button><b>${md(day)}</b><button class="btn" data-dmv="1" aria-label="次の日">›</button><button class="btn" data-dtoday="1">今日</button></div>`;
     h += `<div class="card day-sum"><div class="t1">${isToday ? '今日はこんな予定です' : k === 1 ? '明日はこんな予定です' : md(day) + 'の予定'}</div><div class="t2">${sum}</div>${wx != null ? `<div class="t3">☂ 家の周りの降水確率 ${wx}%${G.commute.rainy() && isToday ? '・雨モード' : ''}</div>` : ''}
-      ${tops.length ? `<div class="day-tops">${tops.map((t) => `<span>${t}</span>`).join('')}</div>` : ''}</div>`;
+      ${tops.length ? `<div class="day-tops">${tops.map((t) => `<span>${t}</span>`).join('')}</div>` : ''}
+      ${G.life.itemsHtml(day) ? `<div class="t1" style="margin-top:8px">🎒 持ち物</div>${G.life.itemsHtml(day)}` : ''}</div>`;
     if (!items.length) return h + '<div class="card muted">時刻のある予定はありません。</div>';
     const nowMin = G.minOfDay(now);
     let marked = !isToday;
@@ -213,17 +214,21 @@
   const toMin = (v) => { const [hh, mm] = String(v).split(':').map(Number); return hh * 60 + (mm || 0); };
 
   /* ---------- 予定の編集 ---------- */
-  function edit(id, day) {
+  function edit(id, day, preset) {
     const all = mine();
-    const e = all.find((x) => x.id === id) || { id: 'e' + Date.now().toString(36), title: '', date: day, allDay: false, start: '', end: '', memo: '', repeat: '' };
+    const e = all.find((x) => x.id === id) || { id: 'e' + Date.now().toString(36), title: '', date: day, allDay: false, start: '', end: '', memo: '', repeat: '', ...(preset || {}) };
+    const jobs = G.life.jobs();
     const isNew = !all.some((x) => x.id === e.id);
     G.openEditor(`<h3>${isNew ? '予定を追加' : '予定を編集'}</h3>
-      <label class="f">タイトル</label><input id="evT" value="${G.esc(e.title)}" placeholder="例：バイト">
+      ${jobs.length ? `<label class="f">バイト先（シフトのとき）</label><select id="evJ"><option value="">バイトではない</option>${jobs.map((j) => `<option value="${j.id}"${j.id === e.job ? ' selected' : ''}>💼 ${G.esc(j.name)}</option>`).join('')}</select>` : ''}
+      <label class="f">タイトル</label><input id="evT" value="${G.esc(e.title || (e.job && G.life.jobOf(e.job) ? G.life.jobOf(e.job).name : ''))}" placeholder="例：部活">
       <label class="f">日付</label><input id="evD" type="date" value="${e.date}">
       <label class="ocr-mode" style="color:var(--text);font-size:15px"><input type="checkbox" id="evA"${e.allDay ? ' checked' : ''}> 終日</label>
       <div class="row2" id="evTimes"${e.allDay ? ' hidden' : ''}><div><label class="f">開始</label><input id="evS" type="time" value="${e.start || ''}"></div><div><label class="f">終了</label><input id="evE" type="time" value="${e.end || ''}"></div></div>
       <label class="f">行き先の駅（入れると Yahoo!乗換案内で経路を調べられます）</label><input id="evP" value="${G.esc(e.place || '')}" placeholder="例：土浦（「駅」はなくてOK）">
       ${destForm(e)}
+      <div id="evBrkBox"${e.job ? '' : ' hidden'}><label class="f">休憩（分）</label><input id="evBrk" type="number" min="0" value="${e.brk || ''}" placeholder="例：60"></div>
+      <label class="f">持ち物（「、」で区切る。前日の夜とホームでチェック）</label><input id="evI" value="${G.esc(e.items || '')}" placeholder="例：ユニフォーム、タオル">
       <label class="f">くり返し</label><select id="evR"><option value="">しない</option><option value="weekly"${e.repeat === 'weekly' ? ' selected' : ''}>毎週</option></select>
       <label class="f">メモ</label><input id="evM" value="${G.esc(e.memo || '')}">
       <button class="btn pri full" id="evSave">保存</button>
@@ -231,10 +236,18 @@
       <button class="btn full" id="evCancel">閉じる</button>`, (root) => {
       const q = (s) => root.querySelector(s);
       q('#evA').onchange = () => { q('#evTimes').hidden = q('#evA').checked; };
+      // バイト先を選んだら、タイトルと行き先（バイト先の最寄りのマイ駅）を入れる
+      const jsel = q('#evJ');
+      if (jsel) jsel.onchange = () => {
+        const j = G.life.jobOf(jsel.value); q('#evBrkBox').hidden = !j;
+        if (j) { if (!q('#evT').value || jobs.some((x) => x.name === q('#evT').value)) q('#evT').value = j.name; if (j.dest && q('#evDest')) { q('#evDest').value = j.dest; q('#evDest').dispatchEvent(new Event('change')); } }
+      };
+      if (jsel && jsel.value && !e.dest) jsel.onchange();
       bindDestForm(root, () => q('#evD').value || day);
       q('#evSave').onclick = () => {
         const t = q('#evT').value.trim(); if (!t) { q('#evT').focus(); return; }
-        const n = { ...e, title: t, date: q('#evD').value || day, allDay: q('#evA').checked, start: q('#evS').value, end: q('#evE').value, memo: q('#evM').value.trim(), repeat: q('#evR').value, place: q('#evP').value.trim().replace(/駅$/, ''), ...readDestForm(root) };
+        const n = { ...e, title: t, date: q('#evD').value || day, allDay: q('#evA').checked, start: q('#evS').value, end: q('#evE').value, memo: q('#evM').value.trim(), repeat: q('#evR').value, place: q('#evP').value.trim().replace(/駅$/, ''), ...readDestForm(root),
+          job: jsel ? jsel.value || null : e.job || null, brk: Number(q('#evBrk').value) || 0, items: q('#evI').value.trim() };
         saveMine([...mine().filter((x) => x.id !== e.id), n]);
         st.sel = n.date; G.closeEditor(); render(); if (G.cur !== 'class' && G.mods[G.cur]) G.mods[G.cur].render(); // ホームから開いたときも描き直す
       };
@@ -258,14 +271,17 @@
   /* ---------- 画面 ---------- */
   function render() {
     const v = G.$('v-class');
-    const seg = `<div class="seg"><button data-cv="cal" class="${st.view === 'cal' ? 'on' : ''}">📅 月</button><button data-cv="day" class="${st.view === 'day' ? 'on' : ''}">📋 1日の予定</button><button data-cv="tt" class="${st.view === 'tt' ? 'on' : ''}">🗓 時間割</button></div>`;
-    G.$('title').textContent = { cal: 'カレンダー', day: '1日の予定', tt: '時間割' }[st.view];
+    const seg = `<div class="seg"><button data-cv="cal" class="${st.view === 'cal' ? 'on' : ''}">📅 月</button><button data-cv="day" class="${st.view === 'day' ? 'on' : ''}">📋 1日の予定</button><button data-cv="tt" class="${st.view === 'tt' ? 'on' : ''}">🗓 時間割</button><button data-cv="week" class="${st.view === 'week' ? 'on' : ''}">📝 週</button></div>`;
+    G.$('title').textContent = { cal: 'カレンダー', day: '1日の予定', tt: '時間割', week: 'ふりかえり' }[st.view];
+    if (st.view === 'week') { if (!st.wk) st.wk = G.ymd(G.life.monday(new Date())); v.innerHTML = seg + G.life.reviewHtml(parse(st.wk)); return; }
     if (st.view === 'tt') { v.innerHTML = seg + '<div id="ttBox"></div>'; G.classes.renderTT(); return; }
     if (st.view === 'day') { if (!st.sel) st.sel = ymd(new Date()); v.innerHTML = seg + dayView(st.sel); return; }
     const now = new Date();
     if (!st.ym) st.ym = [now.getFullYear(), now.getMonth()];
     if (!st.sel) st.sel = ymd(now);
-    v.innerHTML = seg + `<div class="card cal">${monthGrid()}</div>` + dayList(st.sel) +
+    const ms = G.life.monthSummary(st.ym[0], st.ym[1]);
+    v.innerHTML = seg + `<div class="card cal">${monthGrid()}</div>` +
+      `<button class="btn full" data-jobs="1" style="margin-bottom:6px">💼 シフト・バイト先${ms.min ? `（${st.ym[1] + 1}月：${G.life.hrs(ms.min)}${ms.pay ? '・' + G.life.yen(ms.pay) : ''}）` : ''}</button>` + dayList(st.sel) +
       `<p class="muted">大学の行事は <code>data/events.json</code> に書くと全員に反映されます${st.uni && st.uni.updated ? `（最終更新 ${G.esc(st.uni.updated)}）` : ''}。自分の予定はこの端末にだけ保存されます。</p>`;
   }
   function onClick(e) {
@@ -278,6 +294,10 @@
     if (b.dataset.cv) { st.view = b.dataset.cv; render(); return; }
     if (b.dataset.dmv) { st.sel = ymd(addDays(parse(st.sel), Number(b.dataset.dmv))); const d = parse(st.sel); st.ym = [d.getFullYear(), d.getMonth()]; render(); return; }
     if (b.dataset.dtoday) { st.sel = ymd(new Date()); render(); return; }
+    if (b.dataset.wmv) { st.wk = ymd(addDays(parse(st.wk), 7 * Number(b.dataset.wmv))); render(); return; }
+    if (b.dataset.wtoday) { st.wk = ymd(G.life.monday(new Date())); render(); return; }
+    if (b.dataset.rvsave) { G.life.saveReview(b.dataset.rvsave, G.$('v-class')); return; }
+    if (b.dataset.jobs) { G.life.openJobs(st.ym); return; }
     if (b.dataset.mv) { const [y, m] = st.ym; const d = new Date(y, m + Number(b.dataset.mv), 1); st.ym = [d.getFullYear(), d.getMonth()]; render(); return; }
     if (b.dataset.today) { const n = new Date(); st.ym = [n.getFullYear(), n.getMonth()]; st.sel = ymd(n); render(); return; }
     if (b.dataset.day) {
@@ -312,6 +332,9 @@
     const nm = G.commute.stName(st), d = parse(day);
     return kind === 'go' ? G.commute.yahooUrl('荒川沖', nm, d, shift(e.dA || e.start || '18:00', -st.access), 4) : G.commute.yahooUrl(nm, '荒川沖', d, shift(e.bL || e.end || '21:00', st.access), 1);
   }
-  G.calendar = { editById, destYahoo, destPlans, routeLinks, fromStation, view: (x) => { st.view = x; if (G.cur === 'class') render(); }, mineOn, uniOn };
+  // ほかの画面から：予定を新しく作る／ふりかえりを開く
+  const newEvent = (day, preset) => edit(null, day, preset);
+  function openWeek(key) { st.view = 'week'; st.wk = key; if (G.cur === 'class') render(); else G.go('class'); }
+  G.calendar = { newEvent, openWeek, editById, destYahoo, destPlans, routeLinks, fromStation, view: (x) => { st.view = x; if (G.cur === 'class') render(); }, mineOn, uniOn };
   G.reg('class', { title: 'カレンダー', render, tick: 60, skipTick: () => st.view === 'tt', onShow: () => { loadUni().then(() => G.cur === 'class' && render()); if (!G.kadai.summary().locked) G.kadai.refresh(); } });
 })();

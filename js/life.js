@@ -1,0 +1,211 @@
+// シフト管理・持ち物チェック・一週間のふりかえり
+(function () {
+  const JKEY = 'gl.jobs', CKEY = 'gl.itemsChk', RKEY = 'gl.reviews', DLOG = 'gl.doneLog', WLOG = 'gl.wentLog';
+  const f = G.fmtMin;
+  const toMin = (v) => { const [h, m] = String(v || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
+  const parse = (s) => new Date(s + 'T00:00:00');
+  const addDays = (d, k) => { const x = new Date(d); x.setDate(x.getDate() + k); return x; };
+  const md = (s) => { const d = parse(s); return `${d.getMonth() + 1}/${d.getDate()}(${G.WD[d.getDay()]})`; };
+  const hrs = (m) => `${Math.floor(m / 60)}時間${m % 60 ? (m % 60) + '分' : ''}`;
+  const yen = (n) => '¥' + Math.round(n).toLocaleString();
+
+  /* ===================== シフト ===================== */
+  // バイト先：{ id, name, wage（時給）, dest（マイ駅の id。あれば電車を計算）, items（いつもの持ち物）}
+  const jobs = () => G.load(JKEY, []);
+  const jobOf = (id) => jobs().find((j) => j.id === id);
+  // 1回のシフトの働いた分（休憩を引く。日をまたぐシフトにも対応）
+  function shiftMin(e) {
+    if (!e.start || !e.end) return 0;
+    let m = toMin(e.end) - toMin(e.start); if (m < 0) m += 1440;
+    return Math.max(0, m - (Number(e.brk) || 0));
+  }
+  // その月のシフト（毎週くり返しも1回ずつ数える）
+  function monthShifts(y, m) {
+    const out = [];
+    for (let d = new Date(y, m, 1); d.getMonth() === m; d = addDays(d, 1)) {
+      const day = G.ymd(d);
+      G.calendar.mineOn(day).filter((e) => e.job).forEach((e) => out.push({ e, day }));
+    }
+    return out;
+  }
+  function monthSummary(y, m) {
+    const by = {};
+    for (const { e, day } of monthShifts(y, m)) {
+      const j = jobOf(e.job); const k = e.job;
+      by[k] ||= { job: j, min: 0, count: 0, days: [] };
+      by[k].min += shiftMin(e); by[k].count++; by[k].days.push(day);
+    }
+    let min = 0, pay = 0;
+    Object.values(by).forEach((x) => { x.pay = x.job && x.job.wage ? (x.min / 60) * x.job.wage : 0; min += x.min; pay += x.pay; });
+    return { by, min, pay };
+  }
+
+  // シフト・バイト先の画面（カレンダーの月表示から開く）
+  function openJobs(ym) {
+    const now = new Date(); const [y, m] = ym || [now.getFullYear(), now.getMonth()];
+    const sum = monthSummary(y, m);
+    const ms = G.commute.mySt();
+    const list = jobs();
+    G.openEditor(`<h3>💼 シフト（${y}年${m + 1}月）</h3>
+      <div class="card" style="margin-bottom:8px"><div class="muted">今月の勤務</div>
+        <div style="font-size:22px;font-weight:800">${hrs(sum.min)}${sum.pay ? `<span style="font-size:15px;margin-left:8px">給料の目安 ${yen(sum.pay)}</span>` : ''}</div>
+        ${Object.values(sum.by).map((x) => `<div class="muted">${G.esc(x.job ? x.job.name : '（消したバイト先）')}：${x.count}回・${hrs(x.min)}${x.pay ? '・' + yen(x.pay) : ''}</div>`).join('') || '<div class="muted">今月のシフトはまだありません</div>'}
+        <div class="muted" style="margin-top:4px">休憩を引いた時間 × 時給の目安です（交通費・深夜手当・税金などは含みません）</div></div>
+      <button class="btn pri full" id="jbAddShift">＋ シフトを追加</button>
+      <label class="f" style="margin-top:12px">バイト先</label>
+      ${list.map((j) => `<div class="ms-row"><div><b>${G.esc(j.name)}</b><small>${j.wage ? '時給 ' + yen(j.wage) : '時給未設定'}${j.dest && ms.find((x) => x.id === j.dest) ? '・📍' + G.esc(G.commute.stName(ms.find((x) => x.id === j.dest))) + '駅' : ''}${j.items ? '・持ち物：' + G.esc(j.items) : ''}</small></div><button class="btn" data-jedit="${j.id}">直す</button></div>`).join('') || '<p class="muted">まだありません</p>'}
+      <button class="btn full" id="jbNew">＋ バイト先を追加</button>
+      <button class="btn full" id="jbClose">閉じる</button>`, (root) => {
+      root.querySelector('#jbClose').onclick = G.closeEditor;
+      root.querySelector('#jbNew').onclick = () => editJob(null);
+      root.querySelector('#jbAddShift').onclick = () => {
+        if (!jobs().length) { G.toast('先にバイト先を追加してください'); editJob(null); return; }
+        G.calendar.newEvent(G.ymd(new Date()), { job: jobs()[0].id });
+      };
+      root.querySelectorAll('[data-jedit]').forEach((b) => { b.onclick = () => editJob(b.dataset.jedit); });
+    });
+  }
+  function editJob(id) {
+    const j = jobOf(id) || { id: 'j' + Date.now().toString(36), name: '', wage: '', dest: '', items: '' };
+    const isNew = !jobOf(id);
+    const ms = G.commute.mySt();
+    G.openEditor(`<h3>${isNew ? 'バイト先を追加' : 'バイト先を直す'}</h3>
+      <label class="f">名前</label><input id="jbN" value="${G.esc(j.name)}" placeholder="例：コンビニ">
+      <label class="f">時給（円）</label><input id="jbW" type="number" min="0" value="${j.wage || ''}" placeholder="例：1100">
+      <label class="f">最寄りの駅（マイ駅。選ぶと電車を計算します）</label><select id="jbD"><option value="">なし（家の近くなど）</option>${ms.map((m) => `<option value="${m.id}"${m.id === j.dest ? ' selected' : ''}>${G.esc(G.commute.stName(m))}駅${m.label ? '（' + G.esc(m.label) + '）' : ''}</option>`).join('')}</select>
+      <small class="muted">マイ駅は通学タブの設定で登録できます</small>
+      <label class="f">いつもの持ち物（「、」で区切る）</label><input id="jbI" value="${G.esc(j.items || '')}" placeholder="例：制服、名札">
+      <button class="btn pri full" id="jbSave">保存</button>
+      ${isNew ? '' : '<button class="btn danger full" id="jbDel">このバイト先を消す</button>'}
+      <button class="btn full" id="jbBack">戻る</button>`, (root) => {
+      const q = (x) => root.querySelector(x);
+      q('#jbSave').onclick = () => {
+        const n = { ...j, name: q('#jbN').value.trim(), wage: Number(q('#jbW').value) || 0, dest: q('#jbD').value, items: q('#jbI').value.trim() };
+        if (!n.name) { q('#jbN').focus(); return; }
+        G.save(JKEY, [...jobs().filter((x) => x.id !== j.id), n]); openJobs();
+      };
+      const del = q('#jbDel'); if (del) del.onclick = () => { G.save(JKEY, jobs().filter((x) => x.id !== j.id)); openJobs(); };
+      q('#jbBack').onclick = () => openJobs();
+    });
+  }
+
+  /* ===================== 持ち物 ===================== */
+  const split = (s) => String(s || '').split(/[、,，\n]/).map((x) => x.trim()).filter(Boolean);
+  // その日の持ち物（予定・部活ごとの持ち物 ＋ バイト先のいつもの持ち物）
+  function itemsFor(day) {
+    const out = [], seen = new Set();
+    for (const e of G.calendar.mineOn(day)) {
+      const j = e.job && jobOf(e.job);
+      for (const name of [...split(e.items), ...(j ? split(j.items) : [])]) {
+        if (seen.has(name)) continue; seen.add(name);
+        out.push({ name, from: e.title });
+      }
+    }
+    return out;
+  }
+  const checked = (day) => (G.load(CKEY, {})[day] || {});
+  function toggle(day, name) {
+    const all = G.load(CKEY, {});
+    all[day] ||= {}; all[day][name] = !all[day][name];
+    // 古い日の記録は消す
+    const lim = G.ymd(addDays(new Date(), -14));
+    Object.keys(all).forEach((d) => { if (d < lim) delete all[d]; });
+    G.save(CKEY, all);
+  }
+  // チェックリスト（ホーム・シンプル表示で使う）
+  function itemsHtml(day, small) {
+    const items = itemsFor(day); if (!items.length) return '';
+    const ck = checked(day), done = items.filter((i) => ck[i.name]).length;
+    return `<div class="items${small ? ' small' : ''}">${items.map((i) => `<button class="it${ck[i.name] ? ' on' : ''}" data-item="${G.esc(i.name)}" data-iday="${day}" title="${G.esc(i.from)}">${ck[i.name] ? '✅' : '⬜'} ${G.esc(i.name)}</button>`).join('')}</div>
+      <div class="muted" style="font-size:12px">${done}/${items.length} 入れた</div>`;
+  }
+  // ホームのカード：今日の持ち物（18時以降は明日の分も）
+  function itemsCard(now = new Date()) {
+    const today = G.ymd(now), tm = G.ymd(addDays(now, 1));
+    let h = '';
+    const a = itemsHtml(today);
+    if (a) h += `<div class="t1">今日の持ち物</div>${a}`;
+    if (now.getHours() >= 18) { const b = itemsHtml(tm); if (b) h += `<div class="t1" style="margin-top:8px">明日の持ち物</div>${b}`; }
+    return h ? `<div class="gh">🎒 持ち物チェック</div><div class="card">${h}</div>` : '';
+  }
+  // タップでチェック（どの画面でも）
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-item]'); if (!b) return;
+    e.stopPropagation();
+    toggle(b.dataset.iday, b.dataset.item);
+    const on = !!checked(b.dataset.iday)[b.dataset.item];
+    document.querySelectorAll(`[data-item="${CSS.escape(b.dataset.item)}"][data-iday="${b.dataset.iday}"]`).forEach((x) => { x.classList.toggle('on', on); x.textContent = `${on ? '✅' : '⬜'} ${b.dataset.item}`; });
+    document.querySelectorAll('.items').forEach((box) => {
+      const n = box.querySelectorAll('.it').length, k = box.querySelectorAll('.it.on').length;
+      if (box.nextElementSibling) box.nextElementSibling.textContent = `${k}/${n} 入れた`;
+    });
+  }, true);
+
+  /* ===================== 一週間のふりかえり ===================== */
+  // 記録：課題を完了にした日・大学（駅）に出かけた日
+  function logDone(id, title) { const a = G.load(DLOG, []); a.push({ id, t: Date.now(), title }); G.save(DLOG, a.slice(-300)); }
+  function logWent() { const a = G.load(WLOG, {}); a[G.ymd(new Date())] = 1; G.save(WLOG, a); }
+  const monday = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+  function weekStats(mon) {
+    const s = { cls: 0, online: 0, classDays: 0, went: 0, events: 0, bukatsu: 0, shiftMin: 0, pay: 0, done: [], due: 0 };
+    const went = G.load(WLOG, {});
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(mon, i), day = G.ymd(d);
+      const list = G.classes.dayList(d);
+      s.cls += list.length; s.online += list.filter((x) => G.classes.isOnline(x.c)).length;
+      if (list.some((x) => !G.classes.isOnline(x.c))) s.classDays++;
+      if (went[day]) s.went++;
+      for (const e of G.calendar.mineOn(day)) {
+        if (e.job) { const m = shiftMin(e), j = jobOf(e.job); s.shiftMin += m; if (j && j.wage) s.pay += (m / 60) * j.wage; }
+        else if (e.dest) s.bukatsu++;
+        else s.events++;
+      }
+    }
+    const t0 = +mon, t1 = +addDays(mon, 7);
+    s.done = G.load(DLOG, []).filter((x) => x.t >= t0 && x.t < t1);
+    return s;
+  }
+  const reviews = () => G.load(RKEY, {});
+  function reviewHtml(mon) {
+    const key = G.ymd(mon), s = weekStats(mon), r = reviews()[key] || {};
+    const end = addDays(mon, 6);
+    const thisWeek = key === G.ymd(monday(new Date()));
+    const cell = (n, l) => `<div class="rv-c"><b>${n}</b><span>${l}</span></div>`;
+    return `<div class="cal-head"><button class="btn" data-wmv="-1" aria-label="前の週">‹</button><b>${md(key)}〜${md(G.ymd(end))}</b><button class="btn" data-wmv="1" aria-label="次の週">›</button><button class="btn" data-wtoday="1">今週</button></div>
+      <div class="card"><div class="t1 muted">${thisWeek ? '今週' : 'この週'}のまとめ</div>
+        <div class="rv-grid">${cell(s.cls + 'コマ', '授業' + (s.online ? `（オンライン${s.online}）` : ''))}${cell(s.went + '日', '出かけた日' + (s.classDays ? `（授業の日${s.classDays}）` : ''))}${cell(s.done.length + '件', '課題を完了')}${cell(hrs(s.shiftMin), 'バイト' + (s.pay ? '・' + yen(s.pay) : ''))}${cell(s.bukatsu + '回', '部活など')}${cell(s.events + '件', 'その他の予定')}</div>
+        ${s.done.length ? `<div class="muted" style="margin-top:6px">完了した課題：${s.done.map((x) => G.esc((x.title || '').slice(0, 16))).join('、')}</div>` : ''}
+        <div class="muted" style="font-size:11px;margin-top:4px">「出かけた日」と「課題を完了」は、この機能を入れた日から数えています</div></div>
+      <div class="card"><label class="f" style="margin-top:0">😊 よかったこと</label><textarea id="rvGood" rows="2" placeholder="例：課題を全部締切前に出せた">${G.esc(r.good || '')}</textarea>
+        <label class="f">🎯 来週の目標</label><textarea id="rvGoal" rows="2" placeholder="例：1限に遅れない">${G.esc(r.goal || '')}</textarea>
+        <button class="btn pri full" data-rvsave="${key}">保存</button>
+        ${(() => { const p = reviews()[G.ymd(addDays(mon, -7))]; return p && p.goal ? `<div class="muted" style="margin-top:8px">先週の目標：${G.esc(p.goal)}</div>` : ''; })()}</div>`;
+  }
+  function saveReview(key, root) {
+    const all = reviews();
+    all[key] = { good: root.querySelector('#rvGood').value.trim(), goal: root.querySelector('#rvGoal').value.trim(), at: Date.now() };
+    G.save(RKEY, all); G.toast('ふりかえりを保存しました');
+  }
+  // ホームのお知らせ：日曜18時〜月曜12時、その週のふりかえりをまだ書いていなければ
+  function reviewCard(now = new Date()) {
+    const dw = now.getDay(), h = now.getHours();
+    if (!((dw === 0 && h >= 18) || (dw === 1 && h < 12))) return '';
+    const mon = dw === 0 ? monday(now) : addDays(monday(now), -7);
+    if (reviews()[G.ymd(mon)]) return '';
+    const s = weekStats(mon);
+    return `<div class="card tile" onclick="G.life.openReview('${G.ymd(mon)}')"><div class="ic">📝</div><div class="tx"><div class="t1">一週間のふりかえり</div>
+      <div class="t2" style="font-size:16px">授業${s.cls}コマ・課題${s.done.length}件完了${s.shiftMin ? '・バイト' + hrs(s.shiftMin) : ''}</div><div class="t3">よかったこと・来週の目標を書こう</div></div><div class="go">›</div></div>`;
+  }
+  // 通知用の文
+  function reviewMsg(mon) {
+    const s = weekStats(mon);
+    return `授業${s.cls}コマ・出かけた日${s.went}日・課題${s.done.length}件完了${s.shiftMin ? '・バイト' + hrs(s.shiftMin) : ''}${s.bukatsu ? '・部活など' + s.bukatsu + '回' : ''}\nアプリで「よかったこと」「来週の目標」を書こう`;
+  }
+
+  G.life = {
+    jobs, jobOf, shiftMin, monthSummary, openJobs,
+    itemsFor, itemsHtml, itemsCard, split,
+    logDone, logWent, monday, weekStats, reviewHtml, saveReview, reviewCard, reviewMsg,
+    openReview: (key) => G.calendar.openWeek(key), hrs, yen,
+  };
+})();

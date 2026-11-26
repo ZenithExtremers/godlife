@@ -260,10 +260,16 @@
       <div class="n">${G.esc(x.c.name)}<small>${G.esc(where(x.c))}</small></div></li>`).join('')}</ul></div>`;
   }
 
+  // ウィジェット風：いちばん上に「次にやること・あと何分」を1行で。タップでシンプル表示
+  function miniBar(now) {
+    const g = glance(now);
+    if (!g || g.label === 'GOD Life') return '';
+    return `<button class="mini" onclick="G.openGlanceNow()"><span class="mini-l">${G.esc(g.label)}</span><b>${G.esc(g.big)}</b><span class="mini-m">${G.esc(g.main)}</span><span class="mini-go">⤢</span></button>`;
+  }
   function render() {
     const now = new Date();
     const cs = G.classes.status(now);
-    G.$('v-home').innerHTML = tripCard(now, cs) + hero(now, cs) + commuteTile(now, cs) + G.weather.card() + kadaiTile() + menuTile(now) + todayList(now, cs);
+    G.$('v-home').innerHTML = miniBar(now) + tripCard(now, cs) + hero(now, cs) + G.life.reviewCard(now) + commuteTile(now, cs) + G.life.itemsCard(now) + G.weather.card() + kadaiTile() + menuTile(now) + todayList(now, cs);
   }
 
   // 手順をタップ：最後（着く）なら到着で終わり、それ以外はそこまで終わったことにする
@@ -271,6 +277,27 @@
     if (i === last || G.commute.tripMark(i) === 'end') { G.commute.tripEnd(); render(); G.toast('おつかれさまでした！'); return; }
     render();
   }
+  // 今日のバイト・部活：まだ着いていない行き（kind:'go'）か、終わったあとの帰り（kind:'back'）
+  function destNow(now) {
+    const day = G.ymd(now), min = G.minOfDay(now), f = G.fmtMin;
+    let best = null;
+    for (const e of G.calendar.mineOn(day)) {
+      const p = G.calendar.destPlans(e, day); if (!p) continue;
+      const go = p.go && p.go.main, bk = p.back && p.back.main, place = G.commute.placeName(p.st);
+      const startMin = e.start ? toMinH(e.start) : go ? go.arrive : 0;
+      if (bk && min >= startMin && min <= bk.arrive) {
+        return { kind: 'back', g: { label: `🏠 ${e.title}のあと`, big: bk.leave - min > 0 ? `あと${G.dur(bk.leave - min)}` : `${f(bk.leave)} に出る`, main: `${f(bk.leave)} に${place}を出る`, sub: `家に ${f(bk.arrive)} 着` } };
+      }
+      if (go && min <= go.arrive && (!best || go.leave < best.leave)) {
+        const ara = go.legs && go.legs[0] && go.legs[0][0] === '荒川沖' ? `荒川沖 ${go.legs[0][1]}・` : '';
+        best = { kind: 'go', leave: go.leave, g: { label: `🚪 ${e.title}へ`, big: go.leave - min > 0 ? `あと${G.dur(go.leave - min)}` : '出発時刻を過ぎています', main: `${f(go.leave)} に家を出る`,
+          sub: `${ara}${place}に ${f(go.arrive)} 着${go.bus ? '\n' + G.commute.busText(go) : ''}` } };
+      }
+    }
+    return best;
+  }
+  const toMinH = (v) => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
+
   // シンプル表示（開いた瞬間に大きく）：いま一番大事な「あと何分で出るか」だけ
   function glance(now = new Date()) {
     const cs = G.classes.status(now);
@@ -290,8 +317,16 @@
       const p = G.commute.nowPlan(G.commute.dir(), now, 'train'), o = p.opts[0];
       if (o) return { label: '🚃 車内', big: `${G.fmtMin(o.arrive)} 着`, main: `${G.commute.dir() === 'school' ? '大学' : '家'}まであと${G.dur(left(o.arrive - p.nowAbs))}`, sub: `${o.legs[0][1]} ${o.legs[0][2]}` };
     }
+    // 今日のバイト・部活（行き先がマイ駅の予定）
+    const dn = destNow(now);
+    if (dn && dn.kind === 'back') return dn.g;
     if (at === 'home') {
       const nd = nextClassDay(now, 'home');
+      // 授業より先にバイト・部活に出るなら、そちらを出す
+      if (dn && dn.kind === 'go') {
+        const cp = nd && nd.k === 0 ? G.commute.arrivePlan('school', now, nd.first.s, 0, 'home').opts[0] : null;
+        if (!cp || dn.leave <= cp.leave) return dn.g;
+      }
       if (nd && nd.k === 0) {
         const p = G.commute.arrivePlan('school', now, nd.first.s, 0, 'home'), o = p.opts[0];
         if (o) return { label: '🚪 家を出るまで', big: o.leave - p.nowAbs < 0 ? '出発時刻を過ぎています' : `あと${G.dur(o.leave - p.nowAbs)}`, main: `${G.fmtMin(o.leave)} に家を出る`,

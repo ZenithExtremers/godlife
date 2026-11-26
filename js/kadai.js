@@ -9,7 +9,10 @@
   const keepSet = () => { try { return JSON.parse(G.raw(KEEP) || '{}'); } catch (e) { return {}; } };
   const reverted = () => { try { return JSON.parse(G.raw('kadai-reverted') || '[]'); } catch (e) { return []; } };
   const doneSet = () => { try { return JSON.parse(G.raw(DONE) || '{}'); } catch (e) { return {}; } };
-  function setDone(id, v) { const d = doneSet(); if (v) d[id] = Date.now(); else delete d[id]; G.raw(DONE, JSON.stringify(d)); }
+  function setDone(id, v) {
+    const d = doneSet(); if (v) d[id] = Date.now(); else delete d[id]; G.raw(DONE, JSON.stringify(d));
+    if (v && G.life) { const it = st.data && st.data.items.find((i) => i.id === id); G.life.logDone(id, it ? it.title : ''); } // ふりかえり用の記録
+  }
 
   /* ---- 復号（Python 側と同じ PBKDF2-SHA256 + AES-GCM） ---- */
   function b64(s) { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }

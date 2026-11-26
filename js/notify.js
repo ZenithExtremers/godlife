@@ -2,7 +2,8 @@
 // ウェブアプリは閉じていると自分で通知を出せないので、ntfy.sh に「この時刻に届けて」と頼む。送るのは通知の文だけ
 (function () {
   const KEY = 'gl.ntfy', SENT = 'gl.ntfySent';
-  const conf = () => G.load(KEY, { on: false, topic: '', lead: 10 });
+  // itemsAt：前日の夜に持ち物を知らせる時刻（0＝しない）、review：日曜20時にふりかえり
+  const conf = () => ({ on: false, topic: '', lead: 10, itemsAt: 21, review: true, ...G.load(KEY, {}) });
   const saveConf = (c) => G.save(KEY, c);
 
   // ntfy のトピック名に使えるのは半角英数字と - _ だけ（1〜64文字）
@@ -60,13 +61,37 @@
   }
 
   // 予約（同じ出発は1回だけ。予約できるのは3日先まで）
+  // 出発前のほかに：前日の夜の持ち物・日曜の夜のふりかえり（時刻そのままで届ける）
+  function extras(now) {
+    const c = conf(), out = [];
+    const D = new Date(now); D.setHours(0, 0, 0, 0);
+    for (let k = 0; k <= 1; k++) {
+      const today = new Date(D); today.setDate(today.getDate() + k);
+      const tm = new Date(today); tm.setDate(tm.getDate() + 1);
+      if (c.itemsAt) {
+        const items = G.life.itemsFor(G.ymd(tm));
+        if (items.length) out.push({ key: `items:${G.ymd(tm)}:${items.map((i) => i.name).join('|')}`, at: +today + c.itemsAt * 3600e3,
+          title: 'GOD Life：明日の持ち物', msg: items.map((i) => '・' + i.name).join('\n') });
+      }
+      if (c.review && k === 0 && today.getDay() === 0) { // 日曜になってから予約（まとめの数字を新しくするため）
+        const mon = G.life.monday(today);
+        out.push({ key: `review:${G.ymd(mon)}`, at: +today + 20 * 3600e3, title: 'GOD Life：一週間のふりかえり', msg: G.life.reviewMsg(mon) });
+      }
+    }
+    return out;
+  }
+
   async function schedule() {
-    const c = conf(); if (!c.on || topicError(topic())) return 0;
+    const c = conf(); if (topicError(topic())) return 0;
     const now = Date.now();
     const sent = G.load(SENT, {});
     Object.keys(sent).forEach((k) => { if (sent[k] < now - 864e5) delete sent[k]; });
     let n = 0;
-    for (const u of upcoming(new Date())) {
+    for (const x of extras(new Date())) {
+      if (sent[x.key] || x.at < now + 60e3 || x.at > now + 36 * 3600e3) continue;
+      try { await post(topic(), x.title, x.msg, x.at); sent[x.key] = x.at; n++; } catch (e) { break; }
+    }
+    for (const u of c.on ? upcoming(new Date()) : []) {
       const at = u.when - c.lead * 60e3;
       const key = `${u.kind}:${u.day}:${u.leave}`;
       if (sent[key] || at < now + 60e3 || at > now + 36 * 3600e3) continue;
@@ -83,20 +108,21 @@
   // 設定画面（メニューから）
   function open() {
     const c = conf();
-    G.openEditor(`<h3>🔔 出発前の通知</h3>
+    G.openEditor(`<h3>🔔 通知</h3>
       <p>アプリを開いたときに、次に家（大学）を出る時刻の少し前の通知を ntfy に予約します。アプリを閉じていても届きます。</p>
       <label class="ocr-mode" style="color:var(--text);font-size:15px"><input type="checkbox" id="nfOn"${c.on ? ' checked' : ''}> 出発前の通知を予約する</label>
       <label class="f">何分前に知らせるか</label><select id="nfLead">${[5, 10, 15, 20, 30].map((m) => `<option value="${m}"${m === c.lead ? ' selected' : ''}>${m}分前</option>`).join('')}</select>
+      <label class="f">🎒 前日の夜に「明日の持ち物」を知らせる</label><select id="nfItems">${[[0, 'しない'], [20, '20時'], [21, '21時'], [22, '22時'], [23, '23時']].map(([v, t]) => `<option value="${v}"${v === c.itemsAt ? ' selected' : ''}>${t}</option>`).join('')}</select>
+      <label class="ocr-mode" style="color:var(--text);font-size:15px"><input type="checkbox" id="nfRv"${c.review ? ' checked' : ''}> 📝 日曜20時に一週間のふりかえりを知らせる</label>
       <button class="btn pri full" id="nfSave">保存して予約する</button>
       <button class="btn full" id="nfTest">テスト通知を送る</button>
       <button class="btn full" id="nfClose">閉じる</button>`, (root) => {
       const q = (s) => root.querySelector(s);
-      const read = () => ({ ...conf(), on: q('#nfOn').checked, lead: Number(q('#nfLead').value) });
+      const read = () => ({ ...conf(), on: q('#nfOn').checked, lead: Number(q('#nfLead').value), itemsAt: Number(q('#nfItems').value), review: q('#nfRv').checked });
       q('#nfSave').onclick = async () => {
         const n = read(); saveConf(n); G.closeEditor();
-        if (!n.on) { G.toast('通知をオフにしました'); return; }
         if (topicError(topic())) { G.toast(NO_TOPIC); return; }
-        const k = await schedule(); G.toast(k ? `${k}件の通知を予約しました` : '保存しました（予約する出発はまだありません）');
+        const k = await schedule(); G.toast(k ? `${k}件の通知を予約しました` : '保存しました（今予約する通知はありません）');
       };
       q('#nfTest').onclick = async () => {
         if (topicError(topic())) { G.toast(NO_TOPIC); return; }
