@@ -106,6 +106,35 @@
     }
     return prune(out);
   }
+  // 大学 → 南柏 → マイ駅（授業のあと、大学から直接行く日）。leave は大学を出る時刻
+  // 柏：南柏から各停で柏へ／line 'l'：南柏から各停で上り／松戸より先：松戸で快速・中距離に乗り換え（推定）
+  const MATSUDO_OFF = 11, MATSUDO_WAIT = 5; // 南柏→松戸（各停）、松戸での乗り換え（待ちこみ）
+  function destGoUniv(st, D) {
+    const tt = TIMETABLE[typeOf(D)], d = DEST[st.key], nm = stName(st), out = [];
+    const walk = { arr: null, do: `大学を出て南柏駅へ（徒歩${CFG.walkUniv}分）` };
+    const add = (mk, arrS, legs, mid) => {
+      const leave = mk - CFG.margin - CFG.walkUniv;
+      out.push({ leave, arrive: arrS + st.access, fromUniv: true, legs,
+        steps: [{ ...walk, t: leave }, { arr: null, t: mk, do: `南柏 ${fmt(mk)} 発 各駅停車に乗る` }, ...mid,
+          { arr: null, t: arrS, do: `${nm} ${fmt(arrS)} 着 → ${st.how}で${placeName(st)}へ（${st.access}分）` }],
+        search: { from: '南柏', to: nm, dep: mk } });
+    };
+    const last = [nm, '', `${st.how} ${st.access}分`];
+    if (st.key === 'kashiwa') {
+      for (const mk of tt.mkDown) { const a = mk + CFG.mkKashiwa; add(mk, a, [['南柏', fmt(mk) + ' 発', '各駅停車'], [nm, fmt(a) + ' 着', last[2]]], []); }
+    } else if (d.line === 'l') {
+      for (const mk of tt.mkUp) { const a = mk + d.off; add(mk, a, [['南柏', fmt(mk) + ' 発', '各駅停車'], [nm, fmt(a) + ' 着', last[2]]], []); }
+    } else {
+      for (const mk of tt.mkUp) {
+        const ms = mk + MATSUDO_OFF, a = ms + MATSUDO_WAIT + (d.off - DEST.matsudo.off);
+        if (st.key === 'matsudo') { add(mk, ms, [['南柏', fmt(mk) + ' 発', '各駅停車'], [nm, fmt(ms) + ' 着', last[2]]], []); continue; }
+        add(mk, a, [['南柏', fmt(mk) + ' 発', '各駅停車'], ['松戸', fmt(ms) + ' ごろ着', '快速・中距離に乗り換え'], [nm, fmt(a) + ' ごろ着', last[2]]],
+          [{ arr: null, t: ms, do: `松戸で快速・中距離電車に乗り換え` }]);
+      }
+    }
+    return prune(out);
+  }
+
   // 行き先 → マイ駅 → 家
   function destBack(st, D) {
     const tt = TIMETABLE[typeOf(D)], d = DEST[st.key], nm = stName(st), out = [];
@@ -134,7 +163,24 @@
   const hm = (v) => { if (!v) return null; const [h, m] = v.split(':').map(Number); return h * 60 + m; };
   // マイ駅の予定の計算。kind='go'：T（分）までに着く一番遅い便／'back'：T 以降に出る一番早い便
   // 常磐線以外の駅（key なし）は、予定に入れた時刻（Yahoo!で調べたもの）をそのまま使う
-  function destPlan(st, D, kind, T, manual) {
+  // opt.from='univ'：行きは大学から（opt.after＝授業が終わる時刻。これより前には出られない）
+  function destPlan(st, D, kind, T, manual, opt = {}) {
+    const univ = kind === 'go' && opt.from === 'univ', after = opt.after || 0;
+    if (univ) {
+      if (!st.key) {
+        // 常磐線以外：あとで入れた「南柏を出る時刻」（manual.mk）で計算する
+        const mk = hm(manual && manual.mk), nm = stName(st);
+        if (mk == null) return { main: null, manualNeeded: true, T, from: 'univ' };
+        const leave = mk - CFG.margin - CFG.walkUniv;
+        return { main: { leave, arrive: T, manual: true, fromUniv: true, late: leave < after, legs: [['南柏', fmt(mk) + ' 発', 'Yahoo!で調べた経路'], [nm, fmt(T) + ' までに着く', '']], steps: [] }, before: null, after: null, from: 'univ' };
+      }
+      const all = destGoUniv(st, D).sort((a, b) => a.leave - b.leave);
+      const ok = all.filter((o) => o.arrive <= T && o.leave >= after);
+      let main = ok[ok.length - 1] || null, late = false;
+      if (!main) { main = all.find((o) => o.leave >= after) || null; late = !!main; } // 授業のあとだと間に合わない：出られる一番早い便
+      if (main && late) main = { ...main, late: true };
+      return { main, before: late ? null : ok[ok.length - 2] || null, after: main ? all.find((o) => o.leave > main.leave) || null : null, est: st.key !== 'kashiwa', from: 'univ' };
+    }
     if (!st.key) {
       // 常磐線以外：T＝着きたい時刻（行き）／駅を出る時刻（帰り）。あとで入れた荒川沖の時刻（manual.ara）で計算する
       const ara = hm(manual && manual.ara), tt = TIMETABLE[typeOf(D)], nm = stName(st);

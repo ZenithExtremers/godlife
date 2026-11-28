@@ -44,7 +44,7 @@
       const end = new Date(D); end.setMinutes(last.e);
       const p2 = G.commute.nowPlan('home', end, 'univ');
       const o2 = p2.opts[0];
-      if (o2 && !o2.tomorrow) out.push({ kind: 'back', when: +D + o2.leave * 60e3, leave: o2.leave, day: G.ymd(D),
+      if (o2 && !o2.tomorrow && !G.calendar.directDay(G.ymd(D))) out.push({ kind: 'back', when: +D + o2.leave * 60e3, leave: o2.leave, day: G.ymd(D),
         title: 'GOD Life：大学を出る時間', msg: `${G.fmtMin(o2.leave)} に大学を出る\n南柏 ${o2.legs[0][1]}・家に ${G.fmtMin(o2.arrive)} 着` });
     }
     // 部活など（予定の行き先がマイ駅）の行き
@@ -54,7 +54,7 @@
       for (const e of G.calendar.mineOn(day)) {
         const p = G.calendar.destPlans(e, day), o = p && p.go && p.go.main; if (!o) continue;
         out.push({ kind: 'dest-' + e.id, when: +D + o.leave * 60e3, leave: o.leave, day,
-          title: 'GOD Life：家を出る時間', msg: `${G.fmtMin(o.leave)} に家を出る\n${e.title} ${e.start}（${G.commute.stName(p.st)}駅）・${G.commute.placeName(p.st)} ${G.fmtMin(o.arrive)} 着${o.bus ? '\n' + G.commute.busText(o) : ''}` });
+          title: `GOD Life：${G.calendar.leaveWord(o)}時間`, msg: `${G.fmtMin(o.leave)} に${G.calendar.leaveWord(o)}\n${e.title} ${e.start}（${G.commute.stName(p.st)}駅）・${G.commute.placeName(p.st)} ${G.fmtMin(o.arrive)} 着${o.bus ? '\n' + G.commute.busText(o) : ''}` });
       }
     }
     return out;

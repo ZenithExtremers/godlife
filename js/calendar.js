@@ -92,17 +92,29 @@
   /* ---------- 行き先（マイ駅）：部活など、大学の代わりに行く日 ---------- */
   const shift = (v, k) => { const [h, m] = v.split(':').map(Number); const t = Math.max(0, h * 60 + m + k); return `${G.pad(Math.floor(t / 60) % 24)}:${G.pad(t % 60)}`; };
   const stOf = (id) => G.commute.mySt().find((m) => m.id === id);
+  // 行きはどこから出るか。e.from：''（自動）| 'home' | 'univ'
+  // 自動：その日、予定より前に終わる大学の授業（オンライン以外）があれば大学から
+  const mmOf = (v) => { if (!v) return 0; const [h, m] = v.split(':').map(Number); return h * 60 + m; };
+  function goFrom(e, day, startV) {
+    const t = startV || e.dA || e.start;
+    const campus = G.classes.dayList(parse(day)).filter((x) => !G.classes.isOnline(x.c) && (!t || x.e <= mmOf(t)));
+    const lastEnd = campus.length ? campus[campus.length - 1].e : 0;
+    if (e.from === 'home') return { from: 'home', auto: false };
+    if (e.from === 'univ') return { from: 'univ', after: lastEnd, auto: false, last: campus[campus.length - 1] };
+    return campus.length ? { from: 'univ', after: lastEnd, auto: true, last: campus[campus.length - 1] } : { from: 'home', auto: true };
+  }
   // 予定 e の行き・帰りの計算（開始時刻に着く便・終了後に乗る便）
   function destPlans(e, day) {
     const st = e.dest && stOf(e.dest);
     if (!st) return null;
     const manual = !st.key; // 常磐線以外：入れた時刻で計算するので、開始・終了時刻がなくてもいい
     if (e.allDay && !manual) return null;
-    const D = parse(day), mm = (v) => { if (!v) return 0; const [h, m] = v.split(':').map(Number); return h * 60 + m; };
+    const D = parse(day), mm = mmOf, gf = goFrom(e, day);
+    const man = gf.from === 'univ' ? { mk: e.dM } : { ara: e.dL };
     return {
-      st,
-      go: manual ? (e.dA || e.start ? G.commute.destPlan(st, D, 'go', mm(e.dA || e.start), { ara: e.dL }) : null)
-        : (e.start ? G.commute.destPlan(st, D, 'go', mm(e.start)) : null),
+      st, from: gf.from,
+      go: manual ? (e.dA || e.start ? G.commute.destPlan(st, D, 'go', mm(e.dA || e.start), man, gf) : null)
+        : (e.start ? G.commute.destPlan(st, D, 'go', mm(e.start), null, gf) : null),
       back: manual ? (e.bL || e.end ? G.commute.destPlan(st, D, 'back', mm(e.bL || e.end), { ara: e.bA }) : null)
         : (e.end ? G.commute.destPlan(st, D, 'back', mm(e.end)) : null),
     };
@@ -112,16 +124,25 @@
     const f = G.fmtMin, nm = G.commute.stName(p.st);
     const g = p.go && p.go.main, b = p.back && p.back.main;
     const need = (p.go && p.go.manualNeeded) || (p.back && p.back.manualNeeded);
-    return `<small>🚃 📍${G.esc(nm)}駅${g ? `・行き：${f(g.leave)} に家を出る` : ''}${b ? `・帰り：${f(b.leave)} に出る → 家 ${f(b.arrive)} 着` : ''}${need ? '・荒川沖の時刻を入れてください' : ''}${(p.go && p.go.est) ? '（推定）' : ''}</small>`;
+    return `<small>🚃 📍${G.esc(nm)}駅${g ? `・行き：${f(g.leave)} に${leaveWord(g)}${g.late ? '（遅れます）' : ''}` : ''}${b ? `・帰り：${f(b.leave)} に出る → 家 ${f(b.arrive)} 着` : ''}${need ? `・${p.go && p.go.manualNeeded && p.from === 'univ' ? '南柏' : '荒川沖'}の時刻を入れてください` : ''}${(p.go && p.go.est) ? '（推定）' : ''}</small>`;
   }
+  // 行きの出発の言い方（大学から直接行く日は「大学を出る」）
+  const leaveWord = (o) => (o && o.fromUniv ? '大学を出る' : '家を出る');
+  // 行きの最初の駅の一言（荒川沖 7:12 発・／南柏 16:40 発・）
+  const firstLeg = (o) => (o && o.legs && o.legs[0] && ['荒川沖', '南柏'].includes(o.legs[0][0]) ? `${o.legs[0][0]} ${o.legs[0][1]}・` : '');
+  // その日、大学から直接マイ駅に行く予定があるか（あれば大学から家への帰りは出さない）
+  const directDay = (day) => mineOn(day).some((e) => { const p = destPlans(e, day); return p && p.from === 'univ' && p.go && (p.go.main || p.go.manualNeeded); });
   function destForm(e) {
     const ms = G.commute.mySt();
     if (!ms.length) return `<label class="f">行き先（部活など、大学の代わりに行く駅）</label><p class="muted" style="margin:4px 0">通学タブの設定で「マイ駅」を登録すると、ここで選べます。</p>`;
     return `<label class="f">行き先（部活など、大学の代わりに行く駅）</label>
       <select id="evDest"><option value="">なし</option>${ms.map((m) => `<option value="${m.id}"${m.id === e.dest ? ' selected' : ''}>${G.esc(G.commute.stName(m))}駅${m.label ? '（' + G.esc(m.label) + '）' : ''}</option>`).join('')}</select>
       <small class="muted" id="evDestHint">開始時刻に着く電車と、終了時刻のあとに乗る電車を計算します（家側は荒川沖のまま）</small>
-      <div id="evDestM" hidden><small class="muted">常磐線以外の駅：着きたい時刻だけ入れておいて、あとで Yahoo!乗換案内で調べた「荒川沖」の時刻を入れてください</small>
-        <div class="row2"><div><small class="muted">着きたい時刻（行き先）</small><input id="evDA" type="time" value="${e.dA || ''}"></div><div><small class="muted">荒川沖を出る時刻（あとで）</small><input id="evDL" type="time" value="${e.dL || ''}"></div></div>
+      <div id="evFromBox"><label class="f">行きはどこから出る？</label>
+        <select id="evFrom"><option value="">自動（授業がある日は大学から）</option><option value="home"${e.from === 'home' ? ' selected' : ''}>家から</option><option value="univ"${e.from === 'univ' ? ' selected' : ''}>大学から（授業のあと直接）</option></select>
+        <small class="muted" id="evFromHint"></small></div>
+      <div id="evDestM" hidden><small class="muted" id="evDestMH">常磐線以外の駅：着きたい時刻だけ入れておいて、あとで Yahoo!乗換案内で調べた「荒川沖」の時刻を入れてください</small>
+        <div class="row2"><div><small class="muted">着きたい時刻（行き先）</small><input id="evDA" type="time" value="${e.dA || ''}"></div><div id="evDLBox"><small class="muted">荒川沖を出る時刻（あとで）</small><input id="evDL" type="time" value="${e.dL || ''}"></div><div id="evDMBox" hidden><small class="muted">南柏を出る時刻（あとで）</small><input id="evDM" type="time" value="${e.dM || ''}"></div></div>
         <a class="btn full" id="evDgY" target="_blank" rel="noopener" style="display:block;margin:4px 0">🚃 行きの経路を調べる</a>
         <div class="row2"><div><small class="muted">帰りに行き先を出る時刻</small><input id="evBL" type="time" value="${e.bL || ''}"></div><div><small class="muted">荒川沖に着く時刻（あとで）</small><input id="evBA" type="time" value="${e.bA || ''}"></div></div>
         <a class="btn full" id="evDbY" target="_blank" rel="noopener" style="display:block;margin:4px 0">🚃 帰りの経路を調べる</a>
@@ -136,20 +157,29 @@
     const upd = () => {
       const st = stOf(q('#evDest').value), d = parse(getDay());
       q('#evDestM').hidden = !st || !!st.key;
+      q('#evFromBox').hidden = !st;
+      // 行きはどこから：自動のときは、どちらになるかを一言で
+      const gf = goFrom({ from: q('#evFrom').value, dA: st && !st.key ? q('#evDA').value : '', start: q('#evS').value }, getDay());
+      const fromNm = gf.from === 'univ' ? '南柏' : '荒川沖';
+      q('#evFromHint').textContent = gf.from === 'univ'
+        ? (gf.last ? `→ 大学から（${gf.last.n}限 ${G.fmtMin(gf.last.e)} に終わったあと、南柏から）` : '→ 大学から（南柏から）')
+        : (gf.auto ? '→ 家から（この日は予定の前に大学の授業がありません）' : '→ 家から（荒川沖から）');
+      q('#evDLBox').hidden = gf.from === 'univ'; q('#evDMBox').hidden = gf.from !== 'univ';
+      q('#evDestMH').textContent = `常磐線以外の駅：着きたい時刻だけ入れておいて、あとで Yahoo!乗換案内で調べた「${fromNm}」の時刻を入れてください`;
       if (st && !st.key) {
         const nm = G.commute.stName(st);
         // 行き：入れた「駅に着く時刻」→ 予定の開始時刻 の順で、その時刻に着く経路。帰り：「駅を出る時刻」→ 終了時刻
         // 駅からの移動の分だけずらして調べる（行き：行き先に着く時刻 − 移動、帰り：行き先を出る時刻 ＋ 移動）
-        q('#evDgY').href = G.commute.yahooUrl('荒川沖', nm, d, shift(q('#evDA').value || q('#evS').value || '18:00', -st.access), 4);
+        q('#evDgY').href = G.commute.yahooUrl(fromNm, nm, d, shift(q('#evDA').value || q('#evS').value || '18:00', -st.access), 4);
         q('#evDbY').href = G.commute.yahooUrl(nm, '荒川沖', d, shift(q('#evBL').value || q('#evE').value || '21:00', st.access), 1);
       }
     };
-    ['#evDest', '#evD', '#evS', '#evE', '#evDA', '#evBL'].forEach((x) => { q(x).addEventListener('change', upd); q(x).addEventListener('input', upd); }); upd();
+    ['#evDest', '#evD', '#evS', '#evE', '#evDA', '#evBL', '#evFrom'].forEach((x) => { q(x).addEventListener('change', upd); q(x).addEventListener('input', upd); }); upd();
   }
   function readDestForm(root) {
     const q = (x) => root.querySelector(x);
     if (!q('#evDest')) return {};
-    return { dest: q('#evDest').value || null, dL: q('#evDL').value, dA: q('#evDA').value, bL: q('#evBL').value, bA: q('#evBA').value, cgo: null, cback: null };
+    return { dest: q('#evDest').value || null, from: q('#evFrom').value || '', dL: q('#evDL').value, dM: q('#evDM').value, dA: q('#evDA').value, bL: q('#evBL').value, bA: q('#evBA').value, cgo: null, cback: null };
   }
 
   /* ---------- 1日の予定（時刻順の流れ） ---------- */
@@ -175,7 +205,7 @@
         add(go.arrive, '🏫', '大学に着く', first.s - go.arrive > 0 ? `${first.n}限の${G.dur(first.s - go.arrive)}前` : `${first.n}限にちょうど`, 'move');
       }
       const end = new Date(D); end.setMinutes(last.e);
-      const back = G.commute.nowPlan('home', end, 'univ').opts[0];
+      const back = directDay(day) ? null : G.commute.nowPlan('home', end, 'univ').opts[0]; // 大学から直接部活などに行く日は、家への帰りを出さない
       if (back && !back.tomorrow) {
         add(back.leave, '🚃', '大学を出る', `南柏 ${G.esc(back.legs[0][1])}`, 'move');
         add(back.arrive, '🏠', '家に着く', '', 'move');
@@ -187,8 +217,8 @@
       else add(toMin(e.start), e.job ? '💼' : '📌', G.esc(e.title) + (e.job ? `（${G.life.hrs(G.life.shiftMin(e))}）` : ''), `${G.esc(e.start)}${e.end ? '–' + G.esc(e.end) : ''}${e.place ? '・📍' + G.esc(e.place) : ''}`, 'ev');
       const p = destPlans(e, day); if (!p) return;
       const nm = G.esc(G.commute.stName(p.st)), go = p.go && p.go.main, bk = p.back && p.back.main;
-      if (go) { add(go.leave, '🚪', `家を出る（${G.esc(e.title)}）`, (go.bus ? G.commute.busText(go) + '・' : '') + (go.legs[0][0] === '荒川沖' ? `荒川沖 ${G.esc(go.legs[0][1])}` : ''), 'move'); add(go.arrive, '📍', `${G.esc(G.commute.placeName(p.st))}に着く`, `${nm}駅`, 'move'); }
-      else if (p.go && p.go.manualNeeded) tops.push(`⚠ ${G.esc(e.title)}：荒川沖の時刻がまだです`);
+      if (go) { add(go.leave, go.fromUniv ? '🏫' : '🚪', `${leaveWord(go)}（${G.esc(e.title)}）`, (go.bus ? G.commute.busText(go) + '・' : '') + G.esc(firstLeg(go).replace(/・$/, '')) + (go.late ? '・⚠ 授業のあとだと間に合いません' : ''), 'move'); add(go.arrive, '📍', `${G.esc(G.commute.placeName(p.st))}に着く`, `${nm}駅`, 'move'); }
+      else if (p.go && p.go.manualNeeded) tops.push(`⚠ ${G.esc(e.title)}：${p.from === 'univ' ? '南柏' : '荒川沖'}の時刻がまだです`);
       if (bk) { add(bk.leave, '🚃', `${G.esc(G.commute.placeName(p.st))}を出る`, '', 'move'); add(bk.arrive, '🏠', '家に着く', '', 'move'); }
     });
     // 課題の締切
@@ -356,11 +386,11 @@
   function destYahoo(e, day, kind) {
     const st = e.dest && stOf(e.dest); if (!st) return '#';
     const nm = G.commute.stName(st), d = parse(day);
-    return kind === 'go' ? G.commute.yahooUrl('荒川沖', nm, d, shift(e.dA || e.start || '18:00', -st.access), 4) : G.commute.yahooUrl(nm, '荒川沖', d, shift(e.bL || e.end || '21:00', st.access), 1);
+    return kind === 'go' ? G.commute.yahooUrl(goFrom(e, day).from === 'univ' ? '南柏' : '荒川沖', nm, d, shift(e.dA || e.start || '18:00', -st.access), 4) : G.commute.yahooUrl(nm, '荒川沖', d, shift(e.bL || e.end || '21:00', st.access), 1);
   }
   // ほかの画面から：予定を新しく作る／ふりかえりを開く
   const newEvent = (day, preset) => edit(null, day, preset);
   function openWeek(key) { st.view = 'week'; st.wk = key; if (G.cur === 'class') render(); else G.go('class'); }
-  G.calendar = { openMachiUrl, machiLink, newEvent, openWeek, editById, destYahoo, destPlans, routeLinks, fromStation, view: (x) => { st.view = x; if (G.cur === 'class') render(); }, mineOn, uniOn };
+  G.calendar = { leaveWord, firstLeg, directDay, goFrom, openMachiUrl, machiLink, newEvent, openWeek, editById, destYahoo, destPlans, routeLinks, fromStation, view: (x) => { st.view = x; if (G.cur === 'class') render(); }, mineOn, uniOn };
   G.reg('class', { title: 'カレンダー', render, tick: 60, skipTick: () => st.view === 'tt', onShow: () => { loadUni().then(() => G.cur === 'class' && render()); if (!G.kadai.summary().locked) G.kadai.refresh(); } });
 })();

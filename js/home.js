@@ -90,7 +90,7 @@
 
   // 荒川沖の時刻がまだの行：Yahoo!で調べる・予定を開いて入れる
   const pendingRow = (e, day, kind, label) => `<div class="crow" style="cursor:default"><div class="tx"><div class="t1">${label}</div>
-    <div class="t2" style="font-size:16px">荒川沖の時刻を入れてください</div>
+    <div class="t2" style="font-size:16px">${kind === 'go' && G.calendar.goFrom(e, day).from === 'univ' ? '南柏' : '荒川沖'}の時刻を入れてください</div>
     <div class="rl"><a class="btn" href="${G.calendar.destYahoo(e, day, kind)}" target="_blank" rel="noopener">🚃 Yahoo!で調べる</a><button class="btn" onclick="G.calendar.editById('${e.id}')">✏️ 時刻を入れる</button></div></div></div>`;
 
   // 部活など（予定の行き先がマイ駅）の行き・帰り
@@ -105,13 +105,13 @@
         const p = G.calendar.destPlans(e, day); if (!p) continue;
         const nm = G.esc(G.commute.stName(p.st)), est = p.go && p.go.est ? '（推定）' : '';
         const go = p.go && p.go.main, back = p.back && p.back.main;
-        const araGo = go && go.legs && go.legs[0] && go.legs[0][0] === '荒川沖' ? `荒川沖 ${go.legs[0][1]}・` : '';
+        const araGo = G.calendar.firstLeg(go);
         if (p.go && p.go.manualNeeded) out.push(pendingRow(e, day, 'go', `${dl}${G.esc(e.title)}（📍${nm}駅に ${f(p.go.T)} 着）`));
         else if (go && m <= go.arrive) {
           const left = go.leave - m, moving = left < 0;
           out.push(row(`G.calendar.editById('${e.id}')`, `${dl}${G.esc(e.title)}${e.start ? ' ' + G.esc(e.start) : ''}（📍${nm}駅）${moving ? '・移動中' : 'に間に合うには'}${est}`,
-            `${f(go.leave)} に家を出る`,
-            `${moving ? '' : 'あと' + G.dur(left) + '・'}${go.bus ? G.commute.busText(go) + '・' : ''}${araGo}${G.esc(G.commute.placeName(p.st))}に ${f(go.arrive)} 着${!moving && p.go.after ? `<br>1本後：${f(p.go.after.leave)} 出発 → ${f(p.go.after.arrive)} 着` : ''}`));
+            `${f(go.leave)} に${G.calendar.leaveWord(go)}`,
+            `${go.late ? '⚠ 授業のあとだと間に合いません・' : ''}${moving ? '' : 'あと' + G.dur(left) + '・'}${go.bus ? G.commute.busText(go) + '・' : ''}${araGo}${G.esc(G.commute.placeName(p.st))}に ${f(go.arrive)} 着${!moving && p.go.after ? `<br>1本後：${f(p.go.after.leave)} 出発 → ${f(p.go.after.arrive)} 着` : ''}`));
         }
         if (k) continue; // 帰りは当日だけ
         if (p.back && p.back.manualNeeded && m <= p.back.T + 60) out.push(pendingRow(e, day, 'back', `${G.esc(e.title)}のあと（📍${nm}駅を ${f(p.back.T)} ごろ出る）`));
@@ -154,6 +154,7 @@
     const min = G.minOfDay(now);
     const from = G.commute.fromFor('home');
     if (!from) return ''; // 家にいる
+    if (from === 'univ' && G.calendar.directDay(G.ymd(now))) return ''; // 大学から直接部活などに行く日（行き方は部活の行に出る）
     const P = G.commute.PLACES[from];
     const after = from === 'univ' && cs.last && min < cs.last.e && min >= cs.first.s ? cs.last.e : null;
     const base = after ? new Date(new Date(now).setHours(0, after, 0, 0)) : now;
@@ -289,9 +290,9 @@
         return { kind: 'back', g: { label: `🏠 ${e.title}のあと`, big: bk.leave - min > 0 ? `あと${G.dur(bk.leave - min)}` : `${f(bk.leave)} に出る`, main: `${f(bk.leave)} に${place}を出る`, sub: `家に ${f(bk.arrive)} 着` } };
       }
       if (go && min <= go.arrive && (!best || go.leave < best.leave)) {
-        const ara = go.legs && go.legs[0] && go.legs[0][0] === '荒川沖' ? `荒川沖 ${go.legs[0][1]}・` : '';
-        best = { kind: 'go', leave: go.leave, g: { label: `🚪 ${e.title}へ`, big: go.leave - min > 0 ? `あと${G.dur(go.leave - min)}` : '出発時刻を過ぎています', main: `${f(go.leave)} に家を出る`,
-          sub: `${ara}${place}に ${f(go.arrive)} 着${go.bus ? '\n' + G.commute.busText(go) : ''}` } };
+        const ara = G.calendar.firstLeg(go);
+        best = { kind: 'go', leave: go.leave, fromUniv: !!go.fromUniv, g: { label: `${go.fromUniv ? '🏫' : '🚪'} ${e.title}へ${go.fromUniv ? '（大学から）' : ''}`, big: go.leave - min > 0 ? `あと${G.dur(go.leave - min)}` : '出発時刻を過ぎています', main: `${f(go.leave)} に${G.calendar.leaveWord(go)}`,
+          sub: `${go.late ? '⚠ 授業のあとだと間に合いません\n' : ''}${ara}${place}に ${f(go.arrive)} 着${go.bus ? '\n' + G.commute.busText(go) : ''}` } };
       }
     }
     return best;
@@ -335,6 +336,7 @@
       const p = G.commute.nowPlan('school', now, 'home'), o = p.opts[0];
       if (o) return { label: '🚪 今から行くなら', big: `あと${G.dur(left(o.leave - p.nowAbs))}`, main: `${o.tomorrow ? '明日 ' : ''}${G.fmtMin(o.leave)} に家を出る`, sub: `大学 ${G.fmtMin(o.arrive)} 着${nd ? '・次の授業は ' + G.commute.dayLabel(nd.date, now) + pfx(nd.first) : ''}` };
     }
+    if (at === 'univ' && dn && dn.kind === 'go' && dn.fromUniv) return dn.g; // 授業のあと大学から直接行く
     const from = at === 'home' ? null : at;
     const dir = at === 'univ' ? 'home' : G.commute.dir();
     if (from && G.commute.fromFor(dir)) {

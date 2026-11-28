@@ -246,7 +246,7 @@
     const day = G.ymd(D);
     for (const e of G.calendar.mineOn(day)) {
       const p = G.calendar.destPlans(e, day), o = p && p.go && p.go.main;
-      if (o) cand.push({ leave: o.leave, why: e.title });
+      if (o && !o.fromUniv) cand.push({ leave: o.leave, why: e.title }); // 大学から直接行く予定は、起きる時刻には関係しない
     }
     cand.sort((a, b) => a.leave - b.leave);
     return cand[0] || null;
